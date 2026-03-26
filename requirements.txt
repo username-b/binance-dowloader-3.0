@@ -1,0 +1,6 @@
+pandas
+pyarrow
+requests
+boto3
+python-dotenv
+pyyaml

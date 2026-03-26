@@ -1,0 +1,5 @@
+для обновления конфига без пересборки
+docker run `
+  --env-file .env `
+  -v C:\projects\binance-dowloader-3.0:/app `
+  binance-downloader
