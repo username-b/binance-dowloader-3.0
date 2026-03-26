@@ -1,12 +1,12 @@
 source: klines
 
 symbols:
-  - ADAUSDT
+  - ACHUSDT 
 
 interval: 1m
 
 date_range:
-  start: 2026-03-03
+  start: 2023-02-22
   end: 2026-03-03
 
 storage:
@@ -16,3 +16,8 @@ storage:
 download:
   retries: 3
   timeout: [10, 60]
+
+sharding:
+  enabled: true
+  shard_id: 0
+  shard_total: 3
