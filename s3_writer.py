@@ -2,6 +2,7 @@ import io
 import pandas as pd
 import boto3
 import os
+from botocore.exceptions import ClientError
 
 
 class S3Writer:
@@ -31,6 +32,18 @@ class S3Writer:
             f"date={date}/data.parquet"
         ).lstrip("/")
 
+    # =========================
+    # 🔥 EXISTS CHECK
+    # =========================
+    def exists(self, key: str) -> bool:
+        try:
+            self.s3.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            raise
+
     def write_df(
         self,
         df: pd.DataFrame,
@@ -39,8 +52,17 @@ class S3Writer:
         interval: str,
         date: str,
     ) -> None:
+        key = self._build_key(source, symbol, interval, date)
+
         # =========================
-        # 1. parquet в память
+        # 🔥 SKIP IF EXISTS
+        # =========================
+        if self.exists(key):
+            print(f"Skip exists: s3://{self.bucket}/{key}")
+            return
+
+        # =========================
+        # parquet в память
         # =========================
         buffer = io.BytesIO()
 
@@ -52,12 +74,7 @@ class S3Writer:
         )
 
         # =========================
-        # 2. ключ
-        # =========================
-        key = self._build_key(source, symbol, interval, date)
-
-        # =========================
-        # 3. upload
+        # upload
         # =========================
         self.s3.put_object(
             Bucket=self.bucket,

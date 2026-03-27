@@ -45,8 +45,13 @@ def main():
 
     pipeline = Pipeline(client, normalizer, writer)
 
-    start_date = cfg["date_range"]["start"]
-    end_date = cfg["date_range"]["end"]
+    def parse_date(x):
+        if isinstance(x, str):
+            return dt.datetime.strptime(x, "%Y-%m-%d").date()
+        return x
+
+    start_date = parse_date(cfg["date_range"]["start"])
+    end_date = parse_date(cfg["date_range"]["end"])
 
     sharding_cfg = cfg.get("sharding", {})
 
