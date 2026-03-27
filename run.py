@@ -26,6 +26,9 @@ def main():
 
     args = parse_args()
     cfg = load_config(args.config)
+    sharding_cfg = cfg.get("sharding", {})
+    shard_id = sharding_cfg.get("shard_id", 0)
+    shard_total = sharding_cfg.get("shard_total", 1)
 
     client = BinanceClient(
         base_root="https://data.binance.vision/data/futures/um/daily",
@@ -45,6 +48,13 @@ def main():
     start_date = cfg["date_range"]["start"]
     end_date = cfg["date_range"]["end"]
 
+    sharding_cfg = cfg.get("sharding", {})
+
+    shard_id = sharding_cfg.get("shard_id", 0)
+    shard_total = sharding_cfg.get("shard_total", 1)
+
+    print(f"Sharding: {shard_id}/{shard_total}")
+
     for symbol in cfg["symbols"]:
         print(f"\n=== PROCESSING {symbol} ===\n")
 
@@ -54,6 +64,8 @@ def main():
             interval=cfg["interval"],
             start_date=start_date,
             end_date=end_date,
+            shard_id=shard_id,
+            shard_total=shard_total,
         )
 
 

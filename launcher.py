@@ -2,9 +2,13 @@ import datetime as dt
 import subprocess
 import yaml
 import copy
-import os
+import tempfile
+from pathlib import Path
 
 
+# =========================
+# SPLIT RANGE
+# =========================
 def split_date_range(start_date, end_date, n):
     total_days = (end_date - start_date).days + 1
     chunk_size = total_days // n
@@ -23,24 +27,25 @@ def split_date_range(start_date, end_date, n):
     return ranges
 
 
+# =========================
+# CONFIG
+# =========================
 def load_config(path):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
 
-def save_config(cfg, path):
-    with open(path, "w") as f:
-        yaml.dump(cfg, f)
-
-
-def run_container(config_path):
+# =========================
+# DOCKER RUN
+# =========================
+def run_container(config_path, mount_dir):
     cmd = [
         "docker",
         "run",
         "--env-file",
         ".env",
         "-v",
-        f"{os.getcwd()}:/app",
+        f"{mount_dir}:/app",
         "binance-downloader",
         "python",
         "run.py",
@@ -48,9 +53,13 @@ def run_container(config_path):
         f"/app/{config_path}",
     ]
 
+    print(" ".join(cmd))  # 🔥 полезно для дебага
     return subprocess.Popen(cmd)
 
 
+# =========================
+# MAIN
+# =========================
 def main():
     base_config_path = "config.yaml"
     cfg = load_config(base_config_path)
@@ -63,11 +72,16 @@ def main():
     if isinstance(end, str):
         end = dt.datetime.strptime(end, "%Y-%m-%d").date()
 
-    n = 20  # сколько контейнеров
+    # 🔥 сколько контейнеров
+    n = 5
 
     ranges = split_date_range(start, end, n)
 
     processes = []
+    temp_files = []
+
+    # 🔥 нормальный путь (фикс бага)
+    mount_dir = Path.cwd().as_posix()
 
     for i, (s, e) in enumerate(ranges):
         new_cfg = copy.deepcopy(cfg)
@@ -75,17 +89,41 @@ def main():
         new_cfg["date_range"]["start"] = s
         new_cfg["date_range"]["end"] = e
 
-        config_name = f"config_{i}.yaml"
-        save_config(new_cfg, config_name)
+        # =========================
+        # TEMP FILE
+        # =========================
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".yaml",
+            delete=False,
+            dir="."
+        )
+
+        yaml.dump(new_cfg, tmp)
+        tmp.close()
+
+        config_name = Path(tmp.name).name
+        temp_files.append(tmp.name)
 
         print(f"Shard {i}: {s} → {e}")
 
-        p = run_container(config_name)
+        p = run_container(config_name, mount_dir)
         processes.append(p)
 
-    # ждём завершения
+    # =========================
+    # WAIT
+    # =========================
     for p in processes:
         p.wait()
+
+    # =========================
+    # CLEANUP
+    # =========================
+    for f in temp_files:
+        try:
+            Path(f).unlink()
+        except Exception as e:
+            print(f"Failed to delete {f}: {e}")
 
 
 if __name__ == "__main__":

@@ -21,13 +21,37 @@ class Pipeline:
         self,
         source: str,
         symbol: str,
-        interval: str,
+        interval: str,  
         start_date: dt.date,
         end_date: dt.date,
+        shard_id: int = 0,
+        shard_total: int = 1,
     ):
+        # =========================
+        # 1. генерируем все даты
+        # =========================
+        dates = []
         current = start_date
 
         while current <= end_date:
+            dates.append(current)
+            current += dt.timedelta(days=1)
+
+        # =========================
+        # 2. применяем shard
+        # =========================
+        if shard_total > 1:
+            dates = [
+                d for i, d in enumerate(dates)
+                if i % shard_total == shard_id
+            ]
+
+        print(f"Shard {shard_id}/{shard_total} → {len(dates)} days")
+
+        # =========================
+        # 3. основной цикл
+        # =========================
+        for current in dates:
             date_str = current.strftime("%Y-%m-%d")
 
             try:
@@ -42,7 +66,6 @@ class Pipeline:
 
                 if df is None or df.empty:
                     print(f"Skip (no data): {date_str}")
-                    current += dt.timedelta(days=1)
                     continue
 
                 df = self.normalizer.normalize(df)
@@ -59,5 +82,3 @@ class Pipeline:
 
             except Exception as e:
                 print(f"ERROR {date_str}: {e}")
-
-            current += dt.timedelta(days=1)
