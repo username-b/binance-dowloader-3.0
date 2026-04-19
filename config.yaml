@@ -1,7 +1,7 @@
 source: klines
 
 symbols:
-  - ADAUSDT
+  - ACHUSDT
 
 interval: 1m
 
