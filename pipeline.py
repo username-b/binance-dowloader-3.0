@@ -2,7 +2,6 @@ import datetime as dt
 from typing import Optional
 
 from binance_client import BinanceClient
-from normalizer import KlinesNormalizer
 from s3_writer import S3Writer
 
 
@@ -10,7 +9,7 @@ class Pipeline:
     def __init__(
         self,
         client: BinanceClient,
-        normalizer: KlinesNormalizer,
+        normalizer,
         writer: S3Writer,
     ):
         self.client = client
@@ -21,7 +20,7 @@ class Pipeline:
         self,
         source: str,
         symbol: str,
-        interval: str,
+        interval: Optional[str],
         start_date: dt.date,
         end_date: dt.date,
     ):

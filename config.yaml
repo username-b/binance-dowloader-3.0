@@ -1,13 +1,11 @@
-source: klines
+source: aggTrades
 
 symbols:
-  - ACHUSDT
-
-interval: 1m
+  - ADAUSDT
 
 date_range:
-  start: 2026-03-03
-  end: 2026-03-03
+  start: 2020-02-01
+  end: 2026-02-01
 
 storage:
   bucket: binance-data-downloader

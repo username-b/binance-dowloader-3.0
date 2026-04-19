@@ -2,6 +2,7 @@ import io
 import pandas as pd
 import boto3
 import os
+from typing import Optional
 
 
 class S3Writer:
@@ -21,22 +22,33 @@ class S3Writer:
         self,
         source: str,
         symbol: str,
-        interval: str,
+        interval: Optional[str],
         date: str,
     ) -> str:
-        return (
-            f"{self.prefix}/{source}/"
-            f"symbol={symbol}/"
-            f"interval={interval}/"
-            f"date={date}/data.parquet"
-        ).lstrip("/")
+        parts = [
+            self.prefix,
+            source,
+            f"symbol={symbol}",
+        ]
+
+        if interval:
+            parts.append(f"interval={interval}")
+
+        parts.extend(
+            [
+                f"date={date}",
+                "data.parquet",
+            ]
+        )
+
+        return "/".join(part for part in parts if part).lstrip("/")
 
     def write_df(
         self,
         df: pd.DataFrame,
         source: str,
         symbol: str,
-        interval: str,
+        interval: Optional[str],
         date: str,
     ) -> None:
         # =========================

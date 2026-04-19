@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 
 from binance_client import BinanceClient
-from normalizer import KlinesNormalizer
+from normalizer import get_normalizer
 from s3_writer import S3Writer
 from pipeline import Pipeline
 from config_loader import load_config
@@ -33,7 +33,7 @@ def main():
         timeout=tuple(cfg["download"]["timeout"]),
     )
 
-    normalizer = KlinesNormalizer()
+    normalizer = get_normalizer(cfg["source"])
 
     writer = S3Writer(
         bucket=cfg["storage"]["bucket"],
@@ -44,6 +44,7 @@ def main():
 
     start_date = cfg["date_range"]["start"]
     end_date = cfg["date_range"]["end"]
+    interval = cfg.get("interval")
 
     for symbol in cfg["symbols"]:
         print(f"\n=== PROCESSING {symbol} ===\n")
@@ -51,7 +52,7 @@ def main():
         pipeline.run_range(
             source=cfg["source"],
             symbol=symbol,
-            interval=cfg["interval"],
+            interval=interval,
             start_date=start_date,
             end_date=end_date,
         )

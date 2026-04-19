@@ -80,3 +80,78 @@ class KlinesNormalizer:
                 "taker_buy_quote",
             ]
         ]
+
+
+class AggTradesNormalizer:
+    COLUMNS = [
+        "agg_trade_id",
+        "price",
+        "quantity",
+        "first_trade_id",
+        "last_trade_id",
+        "transact_time",
+        "is_buyer_maker",
+    ]
+
+    FLOAT_COLS = [
+        "price",
+        "quantity",
+    ]
+
+    INT_COLS = [
+        "agg_trade_id",
+        "first_trade_id",
+        "last_trade_id",
+        "transact_time",
+    ]
+
+    BOOL_COLS = [
+        "is_buyer_maker",
+    ]
+
+    def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.iloc[:, :len(self.COLUMNS)].copy()
+        df.columns = self.COLUMNS
+
+        for col in self.FLOAT_COLS:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float32")
+
+        for col in self.INT_COLS:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        for col in self.BOOL_COLS:
+            df[col] = df[col].astype("boolean")
+
+        df = df.dropna(subset=["agg_trade_id", "transact_time"])
+
+        for col in self.INT_COLS:
+            df[col] = df[col].astype("int64")
+
+        df["timestamp"] = pd.to_datetime(df["transact_time"], unit="ms", utc=True)
+
+        df = df.dropna(subset=["timestamp"])
+        df = df.drop_duplicates(subset=["agg_trade_id"])
+        df = df.sort_values(["transact_time", "agg_trade_id"])
+
+        return df[
+            [
+                "timestamp",
+                "transact_time",
+                "agg_trade_id",
+                "first_trade_id",
+                "last_trade_id",
+                "price",
+                "quantity",
+                "is_buyer_maker",
+            ]
+        ]
+
+
+def get_normalizer(source: str):
+    if source == "klines":
+        return KlinesNormalizer()
+
+    if source == "aggTrades":
+        return AggTradesNormalizer()
+
+    raise ValueError(f"Unsupported source: {source}")
