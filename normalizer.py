@@ -147,11 +147,76 @@ class AggTradesNormalizer:
         ]
 
 
+class TradesNormalizer:
+    COLUMNS = [
+        "id",
+        "price",
+        "qty",
+        "quote_qty",
+        "time",
+        "is_buyer_maker",
+    ]
+
+    FLOAT_COLS = [
+        "price",
+        "qty",
+        "quote_qty",
+    ]
+
+    INT_COLS = [
+        "id",
+        "time",
+    ]
+
+    BOOL_COLS = [
+        "is_buyer_maker",
+    ]
+
+    def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.iloc[:, :len(self.COLUMNS)].copy()
+        df.columns = self.COLUMNS
+
+        for col in self.FLOAT_COLS:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("float32")
+
+        for col in self.INT_COLS:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        for col in self.BOOL_COLS:
+            df[col] = df[col].astype("boolean")
+
+        df = df.dropna(subset=["id", "time"])
+
+        for col in self.INT_COLS:
+            df[col] = df[col].astype("int64")
+
+        df["timestamp"] = pd.to_datetime(df["time"], unit="ms", utc=True)
+
+        df = df.dropna(subset=["timestamp"])
+        df = df.drop_duplicates(subset=["id"])
+        df = df.sort_values(["time", "id"])
+
+        return df[
+            [
+                "timestamp",
+                "time",
+                "id",
+                "price",
+                "qty",
+                "quote_qty",
+                "is_buyer_maker",
+            ]
+        ]
+
+
 def get_normalizer(source: str):
     if source == "klines":
         return KlinesNormalizer()
 
     if source == "aggTrades":
         return AggTradesNormalizer()
+
+    if source == "trades":
+        return TradesNormalizer()
 
     raise ValueError(f"Unsupported source: {source}")
