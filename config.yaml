@@ -1,10 +1,10 @@
 source: klines
 
 symbols:
-  - BTCUSDT
+  - ADAUSDT
 
 date_range:
-  start: 2021-04-30
+  start: 2020-02-01
   end: 2026-02-01
 
 storage:
