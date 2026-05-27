@@ -1,1 +1,7 @@
 *pycache*
+*.tmp*
+*.csv
+*.parquet
+*.png
+dataset_report.json
+model_metrics.json
