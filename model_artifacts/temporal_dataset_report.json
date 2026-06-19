@@ -1,0 +1,161 @@
+{
+  "input_dataset": "model_artifacts\\adausdt_minute_log_return_dataset.parquet",
+  "output_dataset": "model_artifacts\\adausdt_minute_log_return_temporal_dataset.parquet",
+  "rows_before": 3157919,
+  "rows_after": 3157859,
+  "dropped_rows": 60,
+  "columns": 404,
+  "feature_columns": 400,
+  "target": "log_return_1m",
+  "raw_return_column_kept_for_diagnostics": "return_1m",
+  "missing_before_top": {
+    "btc_features__btc_zscore__lag_60": 60,
+    "btc_features__btc_rolling_volatility__lag_60": 60,
+    "btc_features__btc_log_return__lag_60": 60,
+    "trade_distribution__C_eff_sell__roll_mean_60": 59,
+    "trade_distribution__C_eff_sell__roll_sum_60": 59,
+    "trade_distribution__C_eff_sell__roll_std_60": 59,
+    "btc_features__btc_rolling_volatility__roll_std_60": 59,
+    "aggression_features__delta_base_norm__roll_abs_sum_60": 59,
+    "aggression_features__delta_base_norm__roll_sum_60": 59,
+    "btc_features__btc_log_return__roll_std_60": 59,
+    "btc_features__btc_log_return__roll_mean_60": 59,
+    "btc_features__btc_rolling_volatility__roll_mean_60": 59,
+    "btc_features__btc_rolling_volatility__ewm_mean_60": 59,
+    "btc_features__btc_zscore__ewm_mean_60": 59,
+    "aggression_features__delta_base_norm__roll_std_60": 59,
+    "aggression_features__delta_quote_norm__roll_sum_60": 59,
+    "aggression_features__delta_base_norm__ewm_mean_60": 59,
+    "aggression_features__delta_quote_norm__ewm_mean_60": 59,
+    "aggression_features__delta_quote_norm__roll_abs_sum_60": 59,
+    "aggression_features__delta_quote_norm__roll_std_60": 59,
+    "aggression_features__delta_quote_norm__roll_mean_60": 59,
+    "aggression_features__delta_base_norm__roll_mean_60": 59,
+    "trade_distribution__N_eff_buy__roll_mean_60": 59,
+    "trade_distribution__C_eff_buy__roll_mean_60": 59,
+    "trade_distribution__C_eff_buy__roll_std_60": 59,
+    "trade_distribution__N_eff_buy__roll_std_60": 59,
+    "trade_distribution__N_eff_buy__roll_sum_60": 59,
+    "btc_features__btc_zscore__roll_std_60": 59,
+    "btc_features__btc_zscore__roll_mean_60": 59,
+    "btc_features__btc_log_return__ewm_mean_60": 59,
+    "trade_distribution__C_eff_buy__roll_sum_60": 59,
+    "trade_distribution__N_eff_sell__roll_mean_60": 59,
+    "trade_distribution__N_eff_sell__roll_sum_60": 59,
+    "trade_distribution__N_eff_sell__roll_std_60": 59,
+    "btc_features__btc_zscore__lag_30": 30,
+    "aggression_features__V_buy_quote__lag_30": 30,
+    "btc_features__btc_rolling_volatility__lag_30": 30,
+    "btc_features__btc_log_return__lag_30": 30,
+    "aggression_features__V_sell_quote__lag_30": 30,
+    "aggression_features__delta_quote_norm__lag_30": 30,
+    "aggression_features__delta_base_norm__lag_30": 30,
+    "price_pressure__PI_total__roll_std_30": 29,
+    "btc_features__btc_zscore__ewm_mean_30": 29,
+    "trade_distribution__C_eff_sell__roll_sum_30": 29,
+    "btc_features__btc_rolling_volatility__ewm_mean_30": 29,
+    "aggression_features__delta_quote_norm__roll_sum_30": 29,
+    "trades_minute_level__delta_quote_norm__roll_sum_30": 29,
+    "trades_minute_level__delta_quote_norm__roll_std_30": 29,
+    "price_pressure__PI_total__roll_mean_30": 29,
+    "aggression_features__delta_quote_norm__ewm_mean_30": 29
+  },
+  "missing_after": 0,
+  "constant_feature_columns_dropped": [],
+  "feature_groups": [
+    {
+      "group": "selected_current_features",
+      "kind": "current",
+      "count": 37
+    },
+    {
+      "group": "returns",
+      "kind": "lags",
+      "count": 14
+    },
+    {
+      "group": "aggression_flow",
+      "kind": "lags",
+      "count": 28
+    },
+    {
+      "group": "aggression_delta",
+      "kind": "rolling",
+      "count": 32
+    },
+    {
+      "group": "aggression_delta",
+      "kind": "ewma",
+      "count": 8
+    },
+    {
+      "group": "trades_minute_level",
+      "kind": "rolling",
+      "count": 18
+    },
+    {
+      "group": "price_pressure",
+      "kind": "lags",
+      "count": 25
+    },
+    {
+      "group": "price_pressure",
+      "kind": "rolling",
+      "count": 30
+    },
+    {
+      "group": "price_pressure",
+      "kind": "ewma",
+      "count": 15
+    },
+    {
+      "group": "intraminute_dynamics",
+      "kind": "rolling",
+      "count": 36
+    },
+    {
+      "group": "vwap_spreads",
+      "kind": "spreads",
+      "count": 3
+    },
+    {
+      "group": "vwap_spreads",
+      "kind": "rolling",
+      "count": 18
+    },
+    {
+      "group": "candle_features",
+      "kind": "lags",
+      "count": 16
+    },
+    {
+      "group": "candle_features",
+      "kind": "rolling",
+      "count": 24
+    },
+    {
+      "group": "btc_features",
+      "kind": "lags",
+      "count": 24
+    },
+    {
+      "group": "btc_features",
+      "kind": "rolling",
+      "count": 24
+    },
+    {
+      "group": "btc_features",
+      "kind": "ewma",
+      "count": 12
+    },
+    {
+      "group": "trade_distribution",
+      "kind": "rolling",
+      "count": 36
+    }
+  ],
+  "time_range": {
+    "start": "2020-02-01 01:01:00+00:00",
+    "end": "2026-02-01 23:59:00+00:00"
+  }
+}

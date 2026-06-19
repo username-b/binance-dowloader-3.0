@@ -5,3 +5,8 @@ boto3
 python-dotenv
 pyyaml
 scikit-learn
+statsmodels
+matplotlib
+arch
+lightgbm
+shap

@@ -1,0 +1,450 @@
+{
+  "dataset": "model_artifacts\\adausdt_minute_log_return_temporal_dataset.parquet",
+  "sample_rows": 199631,
+  "model_feature_count": 350,
+  "baseline_metrics": {
+    "train_rows": 159704,
+    "test_rows": 39927,
+    "train_end": "2025-03-06 20:47:00+00:00",
+    "test_start": "2025-03-06 21:09:00+00:00",
+    "mae": 0.000798354087354718,
+    "rmse": 0.001296106015318484,
+    "r2": 0.009901866546654592,
+    "directional_accuracy": 0.44248253061837856
+  },
+  "top_permutation": [
+    {
+      "feature": "price_pressure__F_PI__roll_std_15",
+      "importance_mean": 8.84211157791889e-09,
+      "importance_std": 2.9051007811626775e-10
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_5",
+      "importance_mean": 5.306659065067515e-09,
+      "importance_std": 2.8974287761919887e-10
+    },
+    {
+      "feature": "price_pressure__F_PI__roll_mean_15",
+      "importance_mean": 2.4571849817191128e-09,
+      "importance_std": 7.909452818939858e-10
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_mean_5",
+      "importance_mean": 2.3509858172391366e-09,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_60",
+      "importance_mean": 2.2044659263011637e-09,
+      "importance_std": 6.153216355928176e-11
+    },
+    {
+      "feature": "price_pressure__F_PI__ewm_mean_5",
+      "importance_mean": 1.8657990236652746e-09,
+      "importance_std": 1.4687527379498545e-09
+    },
+    {
+      "feature": "price_pressure__F_asymmetry__ewm_mean_5",
+      "importance_mean": 1.6788758683189327e-09,
+      "importance_std": 3.1970118735720516e-10
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration",
+      "importance_mean": 1.6005828643135496e-09,
+      "importance_std": 6.097073379922287e-10
+    },
+    {
+      "feature": "aggression_features__V_buy_quote__lag_10",
+      "importance_mean": 1.4479873661268216e-09,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_5",
+      "importance_mean": 1.1970123899664813e-09,
+      "importance_std": 3.341135724400009e-11
+    },
+    {
+      "feature": "price_pressure__F_asymmetry__roll_mean_15",
+      "importance_mean": 9.600647041743688e-10,
+      "importance_std": 5.04490701230186e-10
+    },
+    {
+      "feature": "aggression_features__V_sell_quote__lag_10",
+      "importance_mean": 9.249762383945784e-10,
+      "importance_std": 2.972703360421628e-11
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration__roll_std_5",
+      "importance_mean": 7.69849307996614e-10,
+      "importance_std": 3.9649355376231266e-10
+    },
+    {
+      "feature": "price_pressure__PI_total__lag_1",
+      "importance_mean": 6.630482258058647e-10,
+      "importance_std": 2.0854421484280132e-10
+    },
+    {
+      "feature": "price_pressure__F_asymmetry__lag_10",
+      "importance_mean": 6.58967091167816e-10,
+      "importance_std": 3.2783084544605765e-10
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_30",
+      "importance_mean": 6.282463061062885e-10,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "price_pressure__F_PI__roll_mean_30",
+      "importance_mean": 5.86261928189664e-10,
+      "importance_std": 3.806246173948148e-10
+    },
+    {
+      "feature": "price_pressure__F_asymmetry__lag_2",
+      "importance_mean": 4.808105424985238e-10,
+      "importance_std": 8.993632806612239e-10
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration__roll_max_30",
+      "importance_mean": 4.45861780258091e-10,
+      "importance_std": 5.121141690484854e-10
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_5",
+      "importance_mean": 4.274765633779219e-10,
+      "importance_std": 1.5827499694004708e-11
+    },
+    {
+      "feature": "price_pressure__F_PI__lag_5",
+      "importance_mean": 3.9740455703259816e-10,
+      "importance_std": 1.987022785162991e-10
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_std_30",
+      "importance_mean": 3.937609877200902e-10,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "aggression_features__V_sell_quote__lag_5",
+      "importance_mean": 3.9059316646516096e-10,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "price_pressure__F_PI__roll_mean_5",
+      "importance_mean": 3.3176311708284814e-10,
+      "importance_std": 1.4319990379987167e-10
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration__roll_mean_30",
+      "importance_mean": 3.299253192731097e-10,
+      "importance_std": 5.768352910950666e-10
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration__roll_std_30",
+      "importance_mean": 2.4216130364615054e-10,
+      "importance_std": 4.843226072923011e-10
+    },
+    {
+      "feature": "price_pressure__F_PI__lag_2",
+      "importance_mean": 2.1968003963720244e-10,
+      "importance_std": 4.784939823617019e-10
+    },
+    {
+      "feature": "intraminute_dynamics__F_concentration__roll_mean_15",
+      "importance_mean": 2.0661323950755581e-10,
+      "importance_std": 8.209142474475647e-10
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_15",
+      "importance_mean": 1.7997095541397863e-10,
+      "importance_std": 0.0
+    },
+    {
+      "feature": "price_pressure__F_asymmetry__roll_mean_5",
+      "importance_mean": 1.485964674705172e-10,
+      "importance_std": 1.3352110910592462e-10
+    }
+  ],
+  "top_mutual_information": [
+    {
+      "feature": "intraminute_segments__VWAP_segment_3",
+      "mutual_information": 2.9370789797980974
+    },
+    {
+      "feature": "intraminute_segments__VWAP_minute",
+      "mutual_information": 2.884121063371534
+    },
+    {
+      "feature": "intraminute_segments__VWAP_segment_2",
+      "mutual_information": 2.8721941446316785
+    },
+    {
+      "feature": "intraminute_segments__VWAP_segment_1",
+      "mutual_information": 2.811920658072288
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_30",
+      "mutual_information": 0.19097739897360633
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_30",
+      "mutual_information": 0.18800456329277804
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_60",
+      "mutual_information": 0.17018170308796599
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_mean_60",
+      "mutual_information": 0.17018169562973195
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_60",
+      "mutual_information": 0.16517457430452076
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_mean_60",
+      "mutual_information": 0.16517455561991667
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_std_30",
+      "mutual_information": 0.16418984033081774
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_30",
+      "mutual_information": 0.1617867854861057
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_std_30",
+      "mutual_information": 0.1617853157079976
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_mean_30",
+      "mutual_information": 0.16129168830531082
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_30",
+      "mutual_information": 0.16129166904491044
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_mean_15",
+      "mutual_information": 0.1528669075582778
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_15",
+      "mutual_information": 0.15286686316416276
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_30",
+      "mutual_information": 0.15096398138720613
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_mean_30",
+      "mutual_information": 0.15096395214635372
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_15",
+      "mutual_information": 0.14450010813220704
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_std_60",
+      "mutual_information": 0.14307883827961554
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_15",
+      "mutual_information": 0.14192213694175315
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_mean_15",
+      "mutual_information": 0.14192208617681867
+    },
+    {
+      "feature": "sinthetic_data__sin_weekday",
+      "mutual_information": 0.14162085124064738
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_15",
+      "mutual_information": 0.1411727112057246
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_std_60",
+      "mutual_information": 0.14043068473503517
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_15",
+      "mutual_information": 0.14010479251135521
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_std_15",
+      "mutual_information": 0.14010008500354232
+    },
+    {
+      "feature": "aggression_features__delta_base_norm__roll_std_60",
+      "mutual_information": 0.1369274580430151
+    },
+    {
+      "feature": "aggression_features__delta_quote_norm__roll_std_60",
+      "mutual_information": 0.13672980949564018
+    }
+  ],
+  "target_autocorrelation": [
+    {
+      "lag": 1,
+      "target_autocorrelation": 0.007905088481670207
+    },
+    {
+      "lag": 2,
+      "target_autocorrelation": -0.014879292342423658
+    },
+    {
+      "lag": 3,
+      "target_autocorrelation": -0.000491535419186468
+    },
+    {
+      "lag": 5,
+      "target_autocorrelation": -0.0012578812953594925
+    },
+    {
+      "lag": 10,
+      "target_autocorrelation": 0.006179459922721349
+    },
+    {
+      "lag": 15,
+      "target_autocorrelation": 0.009429886274798184
+    },
+    {
+      "lag": 30,
+      "target_autocorrelation": 0.005731458171191871
+    },
+    {
+      "lag": 60,
+      "target_autocorrelation": 0.0064445428116970595
+    },
+    {
+      "lag": 120,
+      "target_autocorrelation": 0.004292592591880543
+    }
+  ],
+  "top_shap": [
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_std_5",
+      "mean_abs_shap": 5.038134802338687e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_5",
+      "mean_abs_shap": 4.483001015840796e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_15",
+      "mean_abs_shap": 4.38012911204399e-06
+    },
+    {
+      "feature": "aggression_features__V_sell_quote",
+      "mean_abs_shap": 4.365391160239942e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_15",
+      "mean_abs_shap": 4.246021379222649e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_5",
+      "mean_abs_shap": 4.222034879695109e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_max_30",
+      "mean_abs_shap": 4.076199329547816e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_5",
+      "mean_abs_shap": 3.890916666184776e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_std_5",
+      "mean_abs_shap": 3.8231446902105275e-06
+    },
+    {
+      "feature": "aggression_features__V_sell_quote__lag_2",
+      "mean_abs_shap": 3.7715256434872487e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_std_15",
+      "mean_abs_shap": 3.3354187474103436e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_total__roll_std_30",
+      "mean_abs_shap": 3.28035456421132e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__roll_std_30",
+      "mean_abs_shap": 3.1759555217429445e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_mean_5",
+      "mean_abs_shap": 3.037355503449191e-06
+    },
+    {
+      "feature": "price_pressure__F_PI__roll_std_15",
+      "mean_abs_shap": 3.016895907802272e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__lag_1",
+      "mean_abs_shap": 2.9866027223846074e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_30",
+      "mean_abs_shap": 2.9551436980914175e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__lag_2",
+      "mean_abs_shap": 2.9520977605916233e-06
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_60",
+      "mean_abs_shap": 2.862185451303772e-06
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_60",
+      "mean_abs_shap": 2.819651194998759e-06
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_15",
+      "mean_abs_shap": 2.787115392416809e-06
+    },
+    {
+      "feature": "price_pressure__PI_total__lag_3",
+      "mean_abs_shap": 2.7612197020202225e-06
+    },
+    {
+      "feature": "aggression_features__V_sell_quote__lag_3",
+      "mean_abs_shap": 2.7064214112316363e-06
+    },
+    {
+      "feature": "intraminute_dynamics__pressure_segment_3__roll_max_15",
+      "mean_abs_shap": 2.676585332632759e-06
+    },
+    {
+      "feature": "aggression_features__V_buy_quote",
+      "mean_abs_shap": 2.6764358481978147e-06
+    },
+    {
+      "feature": "trade_distribution__N_eff_sell__roll_sum_30",
+      "mean_abs_shap": 2.6490126537613103e-06
+    },
+    {
+      "feature": "aggression_features__V_buy_quote__lag_2",
+      "mean_abs_shap": 2.540192918500522e-06
+    },
+    {
+      "feature": "aggression_features__V_buy_quote__lag_10",
+      "mean_abs_shap": 2.480563808629868e-06
+    },
+    {
+      "feature": "trade_distribution__N_eff_buy__roll_sum_15",
+      "mean_abs_shap": 2.4486167160962177e-06
+    },
+    {
+      "feature": "aggression_features__V_buy_quote__lag_3",
+      "mean_abs_shap": 2.4279472005478437e-06
+    }
+  ],
+  "output_dir": "model_artifacts\\feature_signal"
+}
