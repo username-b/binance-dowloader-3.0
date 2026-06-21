@@ -124,10 +124,29 @@ def build_relative_btc_dataset(
     btc_1m = btc_log.diff()
 
     features = pd.DataFrame(index=prices.index)
+    rolling_stats = {}
+    for window in set((*CORRELATION_WINDOWS, *BETA_WINDOWS)):
+        ada_window = ada_1m.rolling(window, min_periods=window)
+        btc_window = btc_1m.rolling(window, min_periods=window)
+        covariance = ada_window.cov(btc_1m)
+        ada_variance = ada_window.var(ddof=1)
+        btc_variance = btc_window.var(ddof=1)
+        full_window = ada_window.count().eq(window) & btc_window.count().eq(window)
+        rolling_stats[window] = (
+            covariance,
+            ada_variance,
+            btc_variance,
+            full_window,
+        )
+
     for window in CORRELATION_WINDOWS:
-        features[f"ada_btc_return_corr_{window}m"] = ada_1m.rolling(
-            window, min_periods=window
-        ).corr(btc_1m)
+        covariance, ada_variance, btc_variance, full_window = rolling_stats[window]
+        denominator = np.sqrt(ada_variance * btc_variance)
+        correlation = covariance / denominator
+        # Correlation is undefined for a fully flat window. Representing it as
+        # zero preserves the minute and records that there is no co-movement.
+        correlation = correlation.mask(full_window & denominator.eq(0), 0.0)
+        features[f"ada_btc_return_corr_{window}m"] = correlation
 
     for window in RETURN_DIFFERENCE_WINDOWS:
         ada_return = ada_log - ada_log.shift(window)
@@ -135,10 +154,13 @@ def build_relative_btc_dataset(
         features[f"ada_minus_btc_log_return_{window}m"] = ada_return - btc_return
 
     for window in BETA_WINDOWS:
-        covariance = ada_1m.rolling(window, min_periods=window).cov(btc_1m)
-        btc_variance = btc_1m.rolling(window, min_periods=window).var(ddof=1)
+        covariance, _, btc_variance, full_window = rolling_stats[window]
         beta = covariance / btc_variance
-        features[f"ada_beta_to_btc_{window}m"] = beta.mask(btc_variance.eq(0))
+        # Beta has the same 0/0 degeneracy when BTC is flat for the whole
+        # window. Zero means no measurable sensitivity to BTC in that window.
+        features[f"ada_beta_to_btc_{window}m"] = beta.mask(
+            full_window & btc_variance.eq(0), 0.0
+        )
 
     day = pd.Timestamp(date, tz="UTC")
     end = day + timedelta(days=1)

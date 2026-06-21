@@ -6,3 +6,4 @@
 *.png
 dataset_report.json
 model_metrics.json
+.venv
