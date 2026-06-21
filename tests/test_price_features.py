@@ -4,6 +4,14 @@ import numpy as np
 import pandas as pd
 
 from build_price_feature_day import unified_dataset_key, validate_day_dataset
+from build_hmm_datasets import (
+    HMM_FEATURE_COLUMNS,
+    MARKET_FEATURE_COLUMNS,
+    RELATIVE_FEATURE_COLUMNS,
+    build_combined_hmm_dataset,
+    build_market_regime_dataset,
+    build_relative_btc_dataset,
+)
 from price_features import FEATURE_COLUMNS, TARGET_COLUMNS, build_price_features
 
 
@@ -27,6 +35,56 @@ def make_klines(timestamps, close, volume=None, trades=None):
 
 
 class PriceFeaturesTest(unittest.TestCase):
+    def test_market_hmm_dataset_selects_factors_and_removes_warmup(self):
+        timestamps = pd.date_range("2020-02-01", periods=3, freq="1min", tz="UTC")
+        source = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                **{column: [np.nan, 1.0, 2.0] for column in MARKET_FEATURE_COLUMNS},
+                "target_log_return_10m": [9.0, 9.0, 9.0],
+            }
+        )
+        result = build_market_regime_dataset(source)
+        self.assertEqual(result.columns.tolist(), ["timestamp", *MARKET_FEATURE_COLUMNS])
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(result[column].dtype == "float32" for column in MARKET_FEATURE_COLUMNS))
+
+    def test_relative_hmm_formulas(self):
+        timestamps = pd.date_range("2024-01-01", periods=200, freq="1min", tz="UTC")
+        btc_returns = np.linspace(-0.002, 0.003, 199)
+        ada_returns = 2.0 * btc_returns + 0.001
+        btc_close = np.exp(np.r_[0.0, btc_returns.cumsum()])
+        ada_close = np.exp(np.r_[0.0, ada_returns.cumsum()])
+        ada = make_klines(timestamps, ada_close)
+        btc = make_klines(timestamps, btc_close)
+        result = build_relative_btc_dataset(ada, btc, "2024-01-01")
+        row = result.iloc[-1]
+        self.assertEqual(result.columns.tolist(), ["timestamp", *RELATIVE_FEATURE_COLUMNS])
+        self.assertAlmostEqual(row["ada_btc_return_corr_180m"], 1.0, places=5)
+        self.assertAlmostEqual(row["ada_beta_to_btc_180m"], 2.0, places=4)
+        expected_difference = ada_returns[-5:].sum() - btc_returns[-5:].sum()
+        self.assertAlmostEqual(
+            row["ada_minus_btc_log_return_5m"], expected_difference, places=6
+        )
+
+    def test_combined_hmm_dataset_joins_on_timestamp(self):
+        timestamps = pd.date_range("2024-01-01", periods=2, freq="1min", tz="UTC")
+        market = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                **{column: np.ones(2, dtype="float32") for column in MARKET_FEATURE_COLUMNS},
+            }
+        )
+        relative = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                **{column: np.ones(2, dtype="float32") for column in RELATIVE_FEATURE_COLUMNS},
+            }
+        )
+        result = build_combined_hmm_dataset(market, relative)
+        self.assertEqual(result.columns.tolist(), ["timestamp", *HMM_FEATURE_COLUMNS])
+        self.assertEqual(result.shape, (2, 1 + len(HMM_FEATURE_COLUMNS)))
+
     def test_unified_dataset_s3_key(self):
         self.assertEqual(
             unified_dataset_key("ADAUSDT", "1m", "2020-02-01"),

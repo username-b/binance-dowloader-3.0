@@ -14,11 +14,17 @@ import pandas as pd
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
-from price_features import FEATURE_COLUMNS, TARGET_COLUMNS, build_price_features
+from price_features import (
+    FEATURE_COLUMNS,
+    TARGET_COLUMNS,
+    build_price_features,
+    warm_exchange_calendars,
+)
 
 
-DEFAULT_START_DATE = "2020-02-01"
+DEFAULT_START_DATE = "2021-02-02"
 DEFAULT_END_DATE = "2026-02-01"
+RAW_HISTORY_START_DATE = "2020-02-01"
 DEFAULT_OUTPUT_PREFIX = "features/unified_dataset"
 DATASET_SCHEMA_VERSION = "2"
 TRADE_SOURCE = "trades"
@@ -196,7 +202,7 @@ def build_day_dataset(
 def validate_day_dataset(
     dataset: pd.DataFrame,
     date: str,
-    history_start_date: str = DEFAULT_START_DATE,
+    history_start_date: str = RAW_HISTORY_START_DATE,
 ) -> None:
     expected_columns = ["timestamp", *FEATURE_COLUMNS, *TARGET_COLUMNS]
     if dataset.columns.tolist() != expected_columns:
@@ -286,6 +292,9 @@ def main() -> None:
 
     print(f"Range: {start} -> {end} ({len(dates)} days)")
     print(f"Destination: s3://{args.bucket}/{args.output_prefix.strip('/')}/")
+    print("Initializing exchange calendars...", flush=True)
+    warm_exchange_calendars()
+    print("Exchange calendars ready", flush=True)
     for position, day in enumerate(dates, start=1):
         date = day.strftime("%Y-%m-%d")
         destination_key = unified_dataset_key(
@@ -312,7 +321,7 @@ def main() -> None:
                 date=date,
                 raw_prefix=args.raw_prefix,
                 btc_symbol=args.btc_symbol,
-                require_previous_context=date != DEFAULT_START_DATE,
+                require_previous_context=date != RAW_HISTORY_START_DATE,
             )
             validate_day_dataset(dataset, date)
             size = upload_day_dataset(

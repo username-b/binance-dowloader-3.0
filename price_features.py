@@ -352,6 +352,16 @@ def _get_exchange_calendar(calendar_name: str):
     )
 
 
+def warm_exchange_calendars() -> None:
+    """Build and cache every exchange calendar used by the feature pipeline."""
+
+    calendar_names = {
+        name for group in EXCHANGE_GROUPS.values() for name in group
+    } | {"XPAR"}
+    for calendar_name in sorted(calendar_names):
+        _get_exchange_calendar(calendar_name)
+
+
 def _build_exchange_session_features(
     minute_index: pd.DatetimeIndex,
 ) -> pd.DataFrame:
