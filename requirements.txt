@@ -4,3 +4,5 @@ requests
 boto3
 python-dotenv
 pyyaml
+matplotlib
+exchange-calendars
