@@ -21,8 +21,8 @@ from build_price_feature_day import (
 
 
 # Inclusive UTC range for a normal run. Edit these values before launching.
-RUN_START_DATE = "2020-05-27"
-RUN_END_DATE = "2023-02-01"
+RUN_START_DATE = "2024-10-25"
+RUN_END_DATE = "2026-02-01"
 
 HMM_OUTPUT_PREFIX = "features/hmm_dataset"
 HMM_SCHEMA_VERSION = "2"
