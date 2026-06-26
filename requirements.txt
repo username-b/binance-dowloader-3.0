@@ -7,3 +7,4 @@ python-dotenv
 pyyaml
 matplotlib
 exchange-calendars
+hmmlearn
