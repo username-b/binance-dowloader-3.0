@@ -22,7 +22,7 @@ from price_features import (
 )
 
 
-DEFAULT_START_DATE = "2021-02-02"
+DEFAULT_START_DATE = "2020-02-01"
 DEFAULT_END_DATE = "2026-02-01"
 RAW_HISTORY_START_DATE = "2020-02-01"
 DEFAULT_OUTPUT_PREFIX = "features/unified_dataset"

@@ -5,6 +5,8 @@ import pandas as pd
 
 from build_price_feature_day import unified_dataset_key, validate_day_dataset
 from build_hmm_datasets import (
+    BETA_WINDOWS,
+    CORRELATION_WINDOWS,
     HMM_FEATURE_COLUMNS,
     MARKET_FEATURE_COLUMNS,
     RELATIVE_FEATURE_COLUMNS,
@@ -66,6 +68,20 @@ class PriceFeaturesTest(unittest.TestCase):
         self.assertAlmostEqual(
             row["ada_minus_btc_log_return_5m"], expected_difference, places=6
         )
+
+    def test_relative_hmm_keeps_fully_flat_windows(self):
+        timestamps = pd.date_range("2024-01-01", periods=240, freq="1min", tz="UTC")
+        ada = make_klines(timestamps, np.ones(len(timestamps)))
+        btc = make_klines(timestamps, np.ones(len(timestamps)))
+
+        result = build_relative_btc_dataset(ada, btc, "2024-01-01")
+
+        self.assertEqual(len(result), 60)
+        self.assertEqual(result.iloc[0]["timestamp"], timestamps[180])
+        for window in CORRELATION_WINDOWS:
+            self.assertEqual(result.iloc[-1][f"ada_btc_return_corr_{window}m"], 0.0)
+        for window in BETA_WINDOWS:
+            self.assertEqual(result.iloc[-1][f"ada_beta_to_btc_{window}m"], 0.0)
 
     def test_combined_hmm_dataset_joins_on_timestamp(self):
         timestamps = pd.date_range("2024-01-01", periods=2, freq="1min", tz="UTC")

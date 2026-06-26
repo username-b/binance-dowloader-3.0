@@ -2,7 +2,9 @@ pandas
 pyarrow
 requests
 boto3
+botocore
 python-dotenv
 pyyaml
 matplotlib
 exchange-calendars
+hmmlearn
