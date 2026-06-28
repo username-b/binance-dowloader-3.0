@@ -1,0 +1,32 @@
+source:
+  type: s3_file
+  bucket: binance-data-downloader
+  key: features/compact/unified_dataset_full.parquet
+  prefix: features/unified_dataset
+  symbol: ADAUSDT
+  interval: 1m
+  start_date: 2020-02-01
+  end_date: 2026-02-01
+  local_path:
+
+output:
+  bucket: binance-data-downloader
+  prefix: analysis/feature_informativeness
+  local_dir: analysis/feature_informativeness
+  upload_to_s3: true
+
+analysis:
+  timestamp_columns:
+    - timestamp
+  targets:
+    target_10: target_log_return_10m
+    target_20: target_log_return_20m
+    target_30: target_log_return_30m
+  deciles: 10
+  return_thresholds:
+    - 0.0025
+    - 0.005
+    - 0.01
+  mutual_information_bins: 20
+  distance_correlation_max_rows: 5000
+  random_seed: 42

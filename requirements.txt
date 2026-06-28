@@ -8,3 +8,4 @@ pyyaml
 matplotlib
 exchange-calendars
 hmmlearn
+scipy
