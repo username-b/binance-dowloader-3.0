@@ -1,7 +1,7 @@
 """Build selected-feature datasets for each forecast target and upload to S3.
 
-This script uses the manually approved feature list from the second workbook
-sheet/CSV and the compact full feature dataset:
+This script uses the manually approved feature list CSV and the compact full
+feature dataset:
 
     s3://binance-data-downloader/features/compact/unified_dataset_full.parquet
 
@@ -37,10 +37,6 @@ DEFAULT_SOURCE_KEY = "features/compact/unified_dataset_full.parquet"
 DEFAULT_SPLIT_TIMESTAMP = "2025-02-01 00:00:00+00:00"
 
 DEFAULT_SELECTION_CSV = "итоговый набор признаков.csv"
-DEFAULT_SELECTION_XLSX = (
-    "C:/Users/Пользователь/Desktop/преддипломная практика/Книга1.xlsx"
-)
-DEFAULT_SELECTION_SHEET_INDEX = 1
 
 TIMESTAMP_COLUMN = "timestamp"
 VARIABLE_COLUMN = "Обозначение переменной"
@@ -72,18 +68,13 @@ def setup_logging() -> logging.Logger:
     return logging.getLogger("selected_target_datasets")
 
 
-def load_selection_table(csv_path: str, xlsx_path: str, sheet_index: int) -> pd.DataFrame:
+def load_selection_table(csv_path: str) -> pd.DataFrame:
     csv = Path(csv_path)
-    if csv.exists():
-        return pd.read_csv(csv, encoding="utf-8-sig")
-
-    xlsx = Path(xlsx_path)
-    if xlsx.exists():
-        return pd.read_excel(xlsx, sheet_name=sheet_index)
-
-    raise FileNotFoundError(
-        f"Selection table not found. Tried CSV={csv.resolve()} and XLSX={xlsx}"
-    )
+    if not csv.exists():
+        raise FileNotFoundError(
+            f"Selection CSV not found relative to project folder: {csv_path}"
+        )
+    return pd.read_csv(csv, encoding="utf-8-sig")
 
 
 def normalize_yes(value) -> bool:
@@ -202,8 +193,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bucket", default=DEFAULT_BUCKET)
     parser.add_argument("--source-key", default=DEFAULT_SOURCE_KEY)
     parser.add_argument("--selection-csv", default=DEFAULT_SELECTION_CSV)
-    parser.add_argument("--selection-xlsx", default=DEFAULT_SELECTION_XLSX)
-    parser.add_argument("--selection-sheet-index", type=int, default=DEFAULT_SELECTION_SHEET_INDEX)
     parser.add_argument("--split-timestamp", default=DEFAULT_SPLIT_TIMESTAMP)
     parser.add_argument(
         "--dry-run",
@@ -217,11 +206,7 @@ def main() -> None:
     args = parse_args()
     logger = setup_logging()
 
-    selection = load_selection_table(
-        args.selection_csv,
-        args.selection_xlsx,
-        args.selection_sheet_index,
-    )
+    selection = load_selection_table(args.selection_csv)
     logger.info("loaded selection table rows=%d columns=%d", len(selection), len(selection.columns))
 
     s3 = make_s3_client()
