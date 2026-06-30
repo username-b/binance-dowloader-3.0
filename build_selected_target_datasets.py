@@ -209,7 +209,10 @@ def main() -> None:
     selection = load_selection_table(args.selection_csv)
     logger.info("loaded selection table rows=%d columns=%d", len(selection), len(selection.columns))
 
+    logger.info("creating S3 client")
     s3 = make_s3_client()
+    logger.info("S3 client ready")
+    logger.info("loading source dataset s3://%s/%s", args.bucket, args.source_key)
     full_dataset = load_s3_parquet(s3, args.bucket, args.source_key)
     if full_dataset is None:
         raise FileNotFoundError(f"Source dataset not found: s3://{args.bucket}/{args.source_key}")
