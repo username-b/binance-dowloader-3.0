@@ -2,3 +2,5 @@
 *.pyc
 *.parquet
 *.csv
+*.tmp.*
+*.png
