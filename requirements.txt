@@ -10,3 +10,5 @@ exchange-calendars
 hmmlearn
 scipy
 scikit-learn
+joblib
+threadpoolctl
