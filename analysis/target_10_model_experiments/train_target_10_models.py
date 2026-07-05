@@ -328,6 +328,15 @@ def make_run_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
+def now_label() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def progress(message: str, enabled: bool = True) -> None:
+    if enabled:
+        print(f"[{now_label()}] {message}", flush=True)
+
+
 def load_target_data(s3, bucket: str, dataset_prefix: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     from build_price_feature_day import load_s3_parquet
 
@@ -635,11 +644,17 @@ def evaluate_prepared_model(
     direction_threshold: float,
     baseline_metrics: dict[str, float] | None,
     target_column: str,
+    print_progress: bool = True,
 ) -> dict[str, Any]:
     features = dedupe_preserve_order(features)
     feature_indices = [data.feature_index[feature] for feature in features]
+    progress(
+        f"START model={model_id} stage={stage} family={model_family.name} "
+        f"features={len(features)} feature_set={feature_set}",
+        print_progress,
+    )
     y_pred, fit_time, predict_time = fit_predict_prepared(data, model_family, feature_indices)
-    return result_row_from_predictions(
+    row = result_row_from_predictions(
         data=data,
         y_pred=y_pred,
         fit_time=fit_time,
@@ -656,6 +671,14 @@ def evaluate_prepared_model(
         baseline_metrics=baseline_metrics,
         target_column=target_column,
     )
+    progress(
+        f"DONE  model={model_id} stage={stage} family={model_family.name} "
+        f"MAE={row['MAE']:.8f} RMSE={row['RMSE']:.8f} "
+        f"DA_025={row['Direction_Accuracy_025']:.6f} "
+        f"fit_sec={fit_time:.3f} predict_sec={predict_time:.3f}",
+        print_progress,
+    )
+    return row
 
 
 def evaluate_model(
@@ -882,15 +905,29 @@ def run_experiments(
     max_selected_per_stage: int = 6,
     n_jobs: int = 1,
     parallel_backend: str = "threading",
+    print_progress: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     available_columns = set(train.columns).intersection(test.columns)
+    progress("Preparing shared train/test matrices", print_progress)
     data = prepare_experiment_data(train, test, target_column=target_column)
+    progress(
+        f"Prepared matrices features={len(data.feature_columns)} "
+        f"train_rows={len(data.y_train)} test_rows={len(data.y_test)} "
+        f"prep_sec={data.prep_time:.3f}",
+        print_progress,
+    )
     results: list[dict[str, Any]] = []
     selected_rows: pd.DataFrame | None = None
     metrics_by_id: dict[str, dict[str, float]] = {}
     stage_selection: list[dict[str, Any]] = []
 
     for stage_index, (stage_name, block_name) in enumerate(STAGES):
+        stage_started = time.perf_counter()
+        progress(
+            f"START stage={stage_name} block={block_name} "
+            f"n_jobs={n_jobs} backend={parallel_backend}",
+            print_progress,
+        )
         candidates = generate_stage_candidates(
             stage_name=stage_name,
             block_name=block_name,
@@ -920,9 +957,15 @@ def run_experiments(
                         "direction_threshold": direction_threshold,
                         "baseline_metrics": previous_metrics,
                         "target_column": target_column,
+                        "print_progress": print_progress,
                     }
                 )
 
+        progress(
+            f"Stage={stage_name} generated_models={len(jobs)} "
+            f"candidates={len(candidates)}",
+            print_progress,
+        )
         if n_jobs == 1 or len(jobs) <= 1:
             stage_rows = [evaluate_prepared_model(data, **job) for job in jobs]
         else:
@@ -942,6 +985,15 @@ def run_experiments(
         stage_frame, selected_ids = rank_and_select(
             pd.DataFrame(stage_rows),
             max_selected=max_selected_per_stage,
+        )
+        progress(
+            f"DONE  stage={stage_name} evaluated={len(stage_frame)} "
+            f"selected={len(selected_ids)} elapsed_sec={time.perf_counter() - stage_started:.1f}",
+            print_progress,
+        )
+        progress(
+            f"Stage={stage_name} selected_models={', '.join(selected_ids)}",
+            print_progress,
         )
         results.extend(stage_frame.to_dict("records"))
         selected_rows = stage_frame.loc[stage_frame["model_id"].isin(selected_ids)].copy()

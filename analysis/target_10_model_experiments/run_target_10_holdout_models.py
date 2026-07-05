@@ -58,6 +58,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parallel-backend", default="threading", choices=["threading", "loky"])
     parser.add_argument("--run-id", default=None)
     parser.add_argument(
+        "--no-model-progress",
+        action="store_true",
+        help="Disable per-model progress prints from the training loop.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run training and ranking but do not upload outputs to S3.",
@@ -107,6 +112,7 @@ def main() -> None:
         max_selected_per_stage=args.max_selected_per_stage,
         n_jobs=args.n_jobs,
         parallel_backend=args.parallel_backend,
+        print_progress=not args.no_model_progress,
     )
     logger.info("evaluated models=%d stages=%d", len(results), len(stage_selection))
 
@@ -155,6 +161,7 @@ def main() -> None:
         "max_selected_per_stage": args.max_selected_per_stage,
         "n_jobs": args.n_jobs,
         "parallel_backend": args.parallel_backend,
+        "model_progress": not args.no_model_progress,
         "train_rows": len(train),
         "test_rows": len(test),
         "train_columns": list(train.columns),
