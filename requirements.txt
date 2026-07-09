@@ -12,3 +12,5 @@ scipy
 scikit-learn
 joblib
 threadpoolctl
+catboost
+lightgbm

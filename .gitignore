@@ -9,3 +9,6 @@ model_metrics.json
 *.venv
 /.venv/
 .venv/
+*.log
+*.json
+*.joblib
