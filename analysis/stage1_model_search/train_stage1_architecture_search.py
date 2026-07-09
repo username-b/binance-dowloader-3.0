@@ -44,12 +44,9 @@ def find_project_root(start: Path | None = None) -> Path:
 PROJECT_ROOT = find_project_root()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-TARGET_EXPERIMENT_DIR = PROJECT_ROOT / "analysis" / "target_10_model_experiments"
-if str(TARGET_EXPERIMENT_DIR) not in sys.path:
-    sys.path.insert(0, str(TARGET_EXPERIMENT_DIR))
 
 from build_price_feature_day import load_s3_parquet, make_s3_client
-from train_target_10_models import available_features, selected_experiment_features
+from price_features import FEATURE_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -127,13 +124,27 @@ def load_target_data(s3, bucket: str, dataset_prefix: str) -> tuple[pd.DataFrame
     return train, test
 
 
+def dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        if value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result
+
+
+def available_features(columns: set[str], features: list[str]) -> list[str]:
+    return [feature for feature in dedupe_preserve_order(features) if feature in columns]
+
+
 def select_stage1_features(
     common_columns: set[str],
     *,
     hmm_feature_prefix: str,
     require_hmm_features: bool,
 ) -> list[str]:
-    feature_columns = selected_experiment_features(common_columns)
+    feature_columns = available_features(common_columns, list(FEATURE_COLUMNS))
     hmm_columns = sorted(
         column
         for column in common_columns
