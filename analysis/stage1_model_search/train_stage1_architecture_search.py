@@ -275,6 +275,28 @@ def build_jobs(include_lightgbm_quantile: bool) -> list[SearchJob]:
     return jobs
 
 
+def filter_jobs(
+    jobs: list[SearchJob],
+    *,
+    include_families: set[str] | None,
+    exclude_families: set[str],
+    include_losses: set[str] | None,
+    exclude_losses: set[str],
+) -> list[SearchJob]:
+    result = []
+    for job in jobs:
+        if include_families is not None and job.model_family not in include_families:
+            continue
+        if job.model_family in exclude_families:
+            continue
+        if include_losses is not None and job.loss_function not in include_losses:
+            continue
+        if job.loss_function in exclude_losses:
+            continue
+        result.append(job)
+    return result
+
+
 def direction_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     valid = np.isfinite(y_true) & np.isfinite(y_pred) & (y_true != 0) & (y_pred != 0)
     if valid.sum() == 0:
@@ -396,7 +418,6 @@ def fit_catboost(job: SearchJob, data: PreparedData, threads_per_model: int) -> 
     }
     if job.loss_function == "MultiQuantile":
         params["loss_function"] = "MultiQuantile:alpha=" + ",".join(str(alpha) for alpha in QUANTILE_ALPHAS)
-        params["eval_metric"] = "MultiQuantile"
     else:
         params["loss_function"] = job.loss_function
 
@@ -587,8 +608,17 @@ def parse_args() -> argparse.Namespace:
         help="Allow training even if the selected dataset has no HMM probability features.",
     )
     parser.add_argument("--include-lightgbm-quantile", action="store_true")
+    parser.add_argument("--include-families", nargs="+", default=None)
+    parser.add_argument("--exclude-families", nargs="+", default=[])
+    parser.add_argument("--include-losses", nargs="+", default=None)
+    parser.add_argument("--exclude-losses", nargs="+", default=[])
     parser.add_argument("--limit-jobs", type=int, default=None, help="Smoke-test limit.")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--preserve-run-config",
+        action="store_true",
+        help="Do not overwrite existing run_config/job_queue when resuming a filtered subset.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Build the queue and config without training.")
     return parser.parse_args()
 
@@ -604,6 +634,13 @@ def main() -> None:
     latest_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/latest"
 
     jobs = build_jobs(args.include_lightgbm_quantile)
+    jobs = filter_jobs(
+        jobs,
+        include_families=set(args.include_families) if args.include_families else None,
+        exclude_families=set(args.exclude_families),
+        include_losses=set(args.include_losses) if args.include_losses else None,
+        exclude_losses=set(args.exclude_losses),
+    )
     if args.limit_jobs is not None:
         jobs = jobs[: args.limit_jobs]
     run_config = {
@@ -637,9 +674,16 @@ def main() -> None:
         return
 
     s3 = make_s3_client()
-    upload_json(s3, args.bucket, f"{output_prefix}/run_config.json", run_config)
-    upload_json(s3, args.bucket, f"{latest_prefix}/run_config.json", run_config)
-    upload_parquet(s3, args.bucket, f"{output_prefix}/job_queue.parquet", pd.DataFrame([job.__dict__ for job in jobs]))
+    if not args.preserve_run_config:
+        upload_json(s3, args.bucket, f"{output_prefix}/run_config.json", run_config)
+        upload_json(s3, args.bucket, f"{latest_prefix}/run_config.json", run_config)
+        upload_parquet(s3, args.bucket, f"{output_prefix}/job_queue.parquet", pd.DataFrame([job.__dict__ for job in jobs]))
+    elif object_exists(s3, args.bucket, f"{output_prefix}/run_config.json"):
+        run_config = json.loads(
+            s3.get_object(Bucket=args.bucket, Key=f"{output_prefix}/run_config.json")["Body"]
+            .read()
+            .decode("utf-8")
+        )
     logger.info("loading train/test from s3://%s/%s", args.bucket, dataset_prefix)
     train, test = load_target_data(s3, args.bucket, dataset_prefix)
     data = prepare_data(

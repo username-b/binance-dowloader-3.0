@@ -66,6 +66,21 @@ For a run under `s3://binance-data-downloader/dataset_target_20/with_price_hmm_n
 The script resumes by default: if `jobs/<job_id>/metrics.json` already exists, that job is
 skipped. Use `--overwrite` to retrain existing jobs.
 
+## Results analysis
+
+Open `stage1_results_overview.ipynb` after a run. It reads the `latest` S3 prefix by
+default and resolves it to the concrete run id from `run_config.json`. If the final
+`stage1_results.parquet` is not present yet, it analyzes partial results from
+`jobs/*/metrics.json`.
+
+The notebook is designed to prune the hyperparameter space, not just pick a winner. It
+builds Top-10 tables for RMSE/MAE/direction/composite score, summarizes every
+hyperparameter with distribution plots and Top-10 counts, draws pairwise heatmaps,
+estimates hyperparameter importance with a RandomForest surrogate, shows partial
+dependence, cost-quality correlations, Pareto frontier, stability of Top-N models,
+early-stop diagnostics, HMM feature-importance checks, and an automatically justified
+`GRID_STAGE2`.
+
 ## Dependencies
 
 Install/update dependencies before a real CatBoost run:
