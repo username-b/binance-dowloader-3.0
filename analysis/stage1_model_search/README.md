@@ -81,6 +81,35 @@ dependence, cost-quality correlations, Pareto frontier, stability of Top-N model
 early-stop diagnostics, HMM feature-importance checks, and an automatically justified
 `GRID_STAGE2`.
 
+`stage1_final_overview.ipynb` is a shorter decision report for the completed
+non-MultiQuantile Stage 1 result table. It records the recommended Stage 2 seed
+architectures and pruning decisions.
+
+## Stage 2 regularization search
+
+Stage 2 is implemented in `train_stage2_regularization_search.py`. It reuses the Stage 1
+S3 artifact format and trains CatBoost `RMSEWithUncertainty` around the best Stage 1
+architectures:
+
+```powershell
+python analysis\stage1_model_search\train_stage2_regularization_search.py `
+  --mode main `
+  --max-parallel-models 4 `
+  --threads-per-model 4
+```
+
+Queue sizes:
+
+- `--mode main`: 288 CatBoost `RMSEWithUncertainty` jobs.
+- `--mode fast`: 144 CatBoost `RMSEWithUncertainty` jobs.
+- `--mode fast --include-lightgbm`: 252 jobs, adding 108 LightGBM regularization jobs.
+
+The Stage 2 output prefix is:
+
+`s3://binance-data-downloader/dataset_target_20/with_price_hmm_n4/stage2_regularization_search/<run_id>/`
+
+The script resumes by job id in the same way as Stage 1.
+
 ## Dependencies
 
 Install/update dependencies before a real CatBoost run:
