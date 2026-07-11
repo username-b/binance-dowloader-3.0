@@ -1,0 +1,21 @@
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+  - ADAUSDT
+
+date_range:
+  start: 2024-01-01
+  end: 2024-01-31
+
+storage:
+  bucket: binance-data-downloader
+  prefix: minute_returns_dataset
+
+download:
+  retries: 3
+  timeout: [10, 60]
+
+output:
+  returns_key: features/minute_returns_1m_{start}_{end}.parquet
+  overwrite_returns: true
+  skip_existing_raw: true
