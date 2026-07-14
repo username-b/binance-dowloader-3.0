@@ -7,6 +7,7 @@ from prepare_ada_hmm_12h_24h_dataset import (
     HMM_FEATURE_COLUMNS,
     TWELVE_HOURS,
     TWENTY_FOUR_HOURS,
+    _date_range_input_keys,
     build_ada_hmm_12h_24h_dataset,
 )
 
@@ -89,6 +90,24 @@ class PrepareAdaHmmDatasetTest(unittest.TestCase):
         row = result.iloc[0]
         self.assertEqual(row["ada_kaufman_efficiency_24h"], 0.0)
         self.assertEqual(row["ada_close_position_12h"], 0.5)
+
+    def test_date_range_keys_do_not_go_before_raw_history_start(self):
+        keys = _date_range_input_keys(
+            symbol="ADAUSDT",
+            interval="1m",
+            raw_prefix="raw",
+            start_date="2020-02-01",
+            end_date="2020-02-02",
+            raw_history_start_date="2020-02-01",
+        )
+
+        self.assertEqual(
+            keys,
+            [
+                "raw/klines/symbol=ADAUSDT/interval=1m/date=2020-02-01/data.parquet",
+                "raw/klines/symbol=ADAUSDT/interval=1m/date=2020-02-02/data.parquet",
+            ],
+        )
 
 
 if __name__ == "__main__":

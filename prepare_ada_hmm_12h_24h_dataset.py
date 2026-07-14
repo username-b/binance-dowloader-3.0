@@ -10,7 +10,12 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-from build_price_feature_day import kline_key, load_s3_parquet, make_s3_client
+from build_price_feature_day import (
+    RAW_HISTORY_START_DATE,
+    kline_key,
+    load_s3_parquet,
+    make_s3_client,
+)
 
 
 HMM_FEATURE_COLUMNS = (
@@ -162,14 +167,18 @@ def _date_range_input_keys(
     raw_prefix: str,
     start_date: str,
     end_date: str,
+    raw_history_start_date: str = RAW_HISTORY_START_DATE,
 ) -> list[str]:
     start = pd.Timestamp(start_date).date()
     end = pd.Timestamp(end_date).date()
+    raw_start = pd.Timestamp(raw_history_start_date).date()
     if start > end:
         raise ValueError("start-date must not be later than end-date")
 
     # Include previous-day context so the first requested day can have 24h windows.
-    source_start = start - timedelta(days=1)
+    # When the requested range starts at the first raw partition, there is no
+    # previous context; the 24h warmup rows will simply be dropped.
+    source_start = max(start - timedelta(days=1), raw_start)
     return [
         kline_key(symbol, interval, day.strftime("%Y-%m-%d"), raw_prefix)
         for day in pd.date_range(source_start, end, freq="D")
@@ -226,6 +235,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--symbol", default="ADAUSDT")
     parser.add_argument("--interval", default="1m")
     parser.add_argument("--raw-prefix", default="raw")
+    parser.add_argument("--raw-history-start-date", default=RAW_HISTORY_START_DATE)
     parser.add_argument(
         "--output-key",
         default=DEFAULT_OUTPUT_KEY,
@@ -250,6 +260,7 @@ def main() -> None:
         raw_prefix=args.raw_prefix,
         start_date=args.start_date,
         end_date=args.end_date,
+        raw_history_start_date=args.raw_history_start_date,
     )
 
     s3 = make_s3_client()
