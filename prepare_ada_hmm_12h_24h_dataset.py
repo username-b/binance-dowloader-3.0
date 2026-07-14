@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
+import io
+import os
+from datetime import timedelta
 
 import numpy as np
 import pandas as pd
+
+from build_price_feature_day import kline_key, load_s3_parquet, make_s3_client
 
 
 HMM_FEATURE_COLUMNS = (
@@ -18,6 +22,10 @@ HMM_FEATURE_COLUMNS = (
 
 TWELVE_HOURS = 12 * 60
 TWENTY_FOUR_HOURS = 24 * 60
+DEFAULT_BUCKET = os.getenv("YC_BUCKET", "binance-data-downloader")
+DEFAULT_OUTPUT_KEY = (
+    "features/hmm_dataset/ada_hmm_12h_24h/interval=1m/data.parquet"
+)
 
 
 def _prepare_minute_klines(klines: pd.DataFrame) -> pd.DataFrame:
@@ -135,34 +143,93 @@ def _validate_hmm_dataset(dataset: pd.DataFrame, *, allow_nan: bool = False) -> 
         raise ValueError("Selected HMM dataset contains non-finite values")
 
 
-def _read_inputs(paths: list[Path]) -> pd.DataFrame:
+def _read_s3_inputs(s3, bucket: str, keys: list[str]) -> pd.DataFrame:
     frames = []
-    for path in paths:
-        if path.suffix.lower() == ".csv":
-            frames.append(pd.read_csv(path))
-        else:
-            frames.append(pd.read_parquet(path))
+    for key in keys:
+        frame = load_s3_parquet(s3, bucket, key)
+        if frame is None:
+            raise FileNotFoundError(f"Input not found: s3://{bucket}/{key}")
+        frames.append(frame)
     if not frames:
-        raise ValueError("At least one input file is required")
+        raise ValueError("At least one S3 input key is required")
     return pd.concat(frames, ignore_index=True)
+
+
+def _date_range_input_keys(
+    *,
+    symbol: str,
+    interval: str,
+    raw_prefix: str,
+    start_date: str,
+    end_date: str,
+) -> list[str]:
+    start = pd.Timestamp(start_date).date()
+    end = pd.Timestamp(end_date).date()
+    if start > end:
+        raise ValueError("start-date must not be later than end-date")
+
+    # Include previous-day context so the first requested day can have 24h windows.
+    source_start = start - timedelta(days=1)
+    return [
+        kline_key(symbol, interval, day.strftime("%Y-%m-%d"), raw_prefix)
+        for day in pd.date_range(source_start, end, freq="D")
+    ]
+
+
+def _filter_output_range(
+    dataset: pd.DataFrame,
+    *,
+    start_date: str | None,
+    end_date: str | None,
+) -> pd.DataFrame:
+    if start_date is None or end_date is None or dataset.empty:
+        return dataset
+
+    start = pd.Timestamp(start_date, tz="UTC")
+    end = pd.Timestamp(end_date, tz="UTC") + timedelta(days=1)
+    mask = dataset["timestamp"].ge(start) & dataset["timestamp"].lt(end)
+    return dataset.loc[mask].reset_index(drop=True)
+
+
+def _write_s3_parquet(s3, bucket: str, key: str, dataset: pd.DataFrame) -> int:
+    buffer = io.BytesIO()
+    dataset.to_parquet(buffer, index=False, engine="pyarrow", compression="zstd")
+    payload = buffer.getvalue()
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=payload,
+        ContentType="application/vnd.apache.parquet",
+        Metadata={
+            "rows": str(len(dataset)),
+            "features": str(len(HMM_FEATURE_COLUMNS)),
+            "frequency": "1m",
+            "dataset-kind": "ada_hmm_12h_24h",
+        },
+    )
+    return len(payload)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Prepare minute ADA 12h/24h feature data for GaussianHMM"
     )
+    parser.add_argument("--bucket", default=DEFAULT_BUCKET)
     parser.add_argument(
-        "--input",
-        type=Path,
+        "--input-key",
         nargs="+",
-        required=True,
-        help="One or more ADAUSDT 1m kline parquet/csv files",
+        default=None,
+        help="One or more S3 keys with ADAUSDT 1m kline parquet partitions",
     )
+    parser.add_argument("--start-date", help="First UTC date to keep in the output")
+    parser.add_argument("--end-date", help="Last UTC date to keep in the output")
+    parser.add_argument("--symbol", default="ADAUSDT")
+    parser.add_argument("--interval", default="1m")
+    parser.add_argument("--raw-prefix", default="raw")
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("analysis/hmm_grid_search/ada_hmm_12h_24h_dataset.parquet"),
-        help="Output parquet path",
+        "--output-key",
+        default=DEFAULT_OUTPUT_KEY,
+        help="Destination S3 key for the prepared parquet dataset",
     )
     parser.add_argument(
         "--keep-warmup",
@@ -174,14 +241,31 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    klines = _read_inputs(args.input)
-    dataset = build_ada_hmm_12h_24h_dataset(klines, dropna=not args.keep_warmup)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    dataset.to_parquet(args.output, index=False, engine="pyarrow", compression="zstd")
-    print(
-        f"Saved {args.output} rows={len(dataset):,} "
-        f"features={len(HMM_FEATURE_COLUMNS)} frequency=1min"
+    if args.input_key is None and (args.start_date is None or args.end_date is None):
+        raise ValueError("Provide either --input-key or both --start-date and --end-date")
+
+    input_keys = args.input_key or _date_range_input_keys(
+        symbol=args.symbol,
+        interval=args.interval,
+        raw_prefix=args.raw_prefix,
+        start_date=args.start_date,
+        end_date=args.end_date,
     )
+
+    s3 = make_s3_client()
+    klines = _read_s3_inputs(s3, args.bucket, input_keys)
+    dataset = build_ada_hmm_12h_24h_dataset(klines, dropna=not args.keep_warmup)
+    dataset = _filter_output_range(
+        dataset,
+        start_date=args.start_date,
+        end_date=args.end_date,
+    )
+    size = _write_s3_parquet(s3, args.bucket, args.output_key, dataset)
+    print(
+        f"Uploaded s3://{args.bucket}/{args.output_key} rows={len(dataset):,} "
+        f"features={len(HMM_FEATURE_COLUMNS)} frequency=1min size_mib={size / 1024**2:.2f}"
+    )
+    print(f"input_keys={len(input_keys)}")
     print("features=" + ",".join(HMM_FEATURE_COLUMNS))
 
 
