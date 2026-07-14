@@ -110,6 +110,10 @@ The Stage 2 output prefix is:
 
 The script resumes by job id in the same way as Stage 1.
 
+Open `stage2_results_overview.ipynb` to analyze Stage 2. It reads `latest`, resolves the
+concrete run id from `run_config.json`, and uses `stage2_results.parquet` when available.
+If the final table is not present yet, it analyzes partial results from `jobs/*/metrics.json`.
+
 ## Dependencies
 
 Install/update dependencies before a real CatBoost run:

@@ -140,6 +140,50 @@ def load_stage1_results(
     )
 
 
+def load_search_results(
+    *,
+    s3: Any,
+    bucket: str,
+    dataset_prefix: str,
+    results_subdir: str,
+    run_id: str = "latest",
+    results_filename: str,
+) -> Stage1LoadResult:
+    active_base_prefix, run_config = resolve_latest_prefix(
+        s3=s3,
+        bucket=bucket,
+        dataset_prefix=dataset_prefix,
+        results_subdir=results_subdir,
+        run_id=run_id,
+    )
+    active_s3_uri = f"s3://{bucket}/{active_base_prefix}/"
+    results_key = f"{active_base_prefix}/{results_filename}"
+    leaderboard_key = f"{active_base_prefix}/leaderboard_top10.parquet"
+
+    metric_keys: list[str] = []
+    loaded_from_final_table = s3_exists(s3, bucket, results_key)
+    if loaded_from_final_table:
+        results = read_parquet(s3, bucket, results_key)
+    else:
+        metric_keys = list_keys(s3, bucket, f"{active_base_prefix}/jobs/", suffix="/metrics.json")
+        results = pd.DataFrame(read_json(s3, bucket, key) for key in metric_keys)
+
+    leaderboard = (
+        read_parquet(s3, bucket, leaderboard_key)
+        if s3_exists(s3, bucket, leaderboard_key)
+        else pd.DataFrame()
+    )
+    return Stage1LoadResult(
+        results=normalize_results(results),
+        leaderboard=leaderboard,
+        run_config=run_config,
+        active_base_prefix=active_base_prefix,
+        active_s3_uri=active_s3_uri,
+        loaded_from_final_table=loaded_from_final_table,
+        metric_keys=metric_keys,
+    )
+
+
 def normalize_results(results: pd.DataFrame) -> pd.DataFrame:
     if results.empty:
         return results

@@ -1,6 +1,7 @@
 pandas
 pyarrow
 requests
+beautifulsoup4
 boto3
 botocore
 python-dotenv
