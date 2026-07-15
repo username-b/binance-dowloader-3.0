@@ -1,30 +1,77 @@
 # Stage 1 Minimal Model Benchmark
 
-Fixed-config benchmark for target return horizons. The default run is for
-`target_log_return_20m` from `dataset_target_20/with_price_hmm_n4`.
+Fixed-config benchmark for target return horizons. The runner supports two suites:
 
-The runner trains 5 point ML models:
+- `fast`: reliable models that should finish quickly across all horizons.
+- `long`: heavier models that should run with no or minimal model-level parallelism.
 
-- Random Forest
-- Extra Trees
-- XGBoost
-- LightGBM
-- CatBoost
-
-And 4 probabilistic models by default:
-
-- CatBoost `RMSEWithUncertainty`
-- CatBoost `MultiQuantile`
-- LightGBM `Quantile`
-- NGBoost Normal
-
-Optionally add HistGradientBoosting Quantile with `--include-histgradient-quantile`.
 There is no grid search; model parameters are intentionally close to defaults and use
 500 boosting/tree iterations where applicable.
 
-Jobs are submitted in a reliable-first order: CatBoost RMSE, LightGBM RMSE, XGBoost,
-CatBoost uncertainty, CatBoost quantile, LightGBM quantile, Extra Trees, Random Forest,
-optional HistGradientBoosting quantile, then NGBoost.
+## Suites
+
+Fast suite:
+
+- CatBoost RMSE
+- LightGBM RMSE
+- XGBoost RMSE
+- CatBoost `RMSEWithUncertainty`
+- CatBoost `MultiQuantile`
+- LightGBM `Quantile`
+- Optional HistGradientBoosting `Quantile` with `--include-histgradient-quantile`
+
+Long suite:
+
+- Extra Trees
+- Random Forest
+- NGBoost Normal
+
+## Recommended Runs For 64 vCPU / 256 GB RAM
+
+Fast run for all horizons:
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon all `
+  --suite fast
+```
+
+Fast run with optional HistGradientBoosting Quantile:
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon all `
+  --suite fast `
+  --include-histgradient-quantile
+```
+
+Long run for all horizons:
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon all `
+  --suite long
+```
+
+Default resources:
+
+- `fast`: `--max-parallel-models 5 --threads-per-model 12`
+- `long`: `--max-parallel-models 1 --threads-per-model 16`
+
+Override these flags explicitly if the host is under memory pressure or mostly idle.
+
+## Smoke Checks
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon all --suite fast
+python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon all --suite long
+```
+
+Expected queue sizes per horizon:
+
+- `fast`: 6 jobs.
+- `fast --include-histgradient-quantile`: 7 jobs.
+- `long`: 3 jobs.
 
 ## Metrics
 
@@ -49,65 +96,17 @@ distribution:
 - `IntervalWidth90`
 - `NLL` when normal uncertainty is available
 
-## Smoke Checks
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20
-python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20 --include-histgradient-quantile
-```
-
-Expected queue sizes:
-
-- Base run: 9 jobs.
-- With HistGradientBoosting Quantile: 10 jobs.
-
-## Recommended Run For 64 vCPU / 256 GB RAM
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py `
-  --horizon 20 `
-  --max-parallel-models 5 `
-  --threads-per-model 12
-```
-
-This uses up to about 60 model worker threads and leaves a small reserve for Python,
-S3 I/O, and system work. If RAM pressure appears, reduce `--max-parallel-models` to
-3 or 4 while keeping `--threads-per-model 12`.
-
-To run all supported horizons sequentially:
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py `
-  --horizon all `
-  --max-parallel-models 5 `
-  --threads-per-model 12
-```
-
-To include the optional fifth probabilistic model:
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py `
-  --horizon 20 `
-  --max-parallel-models 5 `
-  --threads-per-model 12 `
-  --include-histgradient-quantile
-```
-
-## HMM Features
-
-The HMM posterior probability features are included by default:
-
-- `price_hmm_n4_prob_state_0`
-- `price_hmm_n4_prob_state_1`
-- `price_hmm_n4_prob_state_2`
-- `price_hmm_n4_prob_state_3`
-
-The runner requires these columns unless `--allow-missing-hmm` is passed.
-
 ## S3 Layout
 
-For a run under
-`s3://binance-data-downloader/dataset_target_20/with_price_hmm_n4/stage1_architecture_search/<run_id>/`:
+New outputs are stored near the bucket root:
+
+`s3://binance-data-downloader/stage1_model_benchmarks/<suite>/horizon_<N>/<run_id>/`
+
+Latest pointers are per suite and horizon:
+
+`s3://binance-data-downloader/stage1_model_benchmarks/<suite>/horizon_<N>/latest/`
+
+Each run contains:
 
 - `run_config.json`
 - `job_queue.parquet`
@@ -124,6 +123,12 @@ For a run under
 
 The script resumes by default: if `jobs/<job_id>/metrics.json` already exists, that job
 is skipped. Use `--overwrite` to retrain existing jobs.
+
+## HMM Features
+
+HMM posterior probability features are required only for datasets whose prefix contains
+`with_price_hmm`. This lets `--horizon all` run horizon 10 and 30 datasets without HMM
+columns while still validating horizon 20's HMM-enriched dataset.
 
 ## Dependencies
 

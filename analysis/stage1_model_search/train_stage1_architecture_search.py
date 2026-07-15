@@ -30,6 +30,7 @@ TARGET_SPECS = {
 }
 DEFAULT_BUCKET = "binance-data-downloader"
 DEFAULT_RESULTS_SUBDIR = "stage1_architecture_search"
+DEFAULT_RESULTS_PREFIX = "stage1_model_benchmarks"
 DEFAULT_DIRECTION_THRESHOLD = 0.0025
 DEFAULT_HMM_FEATURE_PREFIX = "price_hmm_n4"
 QUANTILE_ALPHAS = (0.05, 0.25, 0.50, 0.75, 0.95)
@@ -258,8 +259,8 @@ def prepare_data(
     )
 
 
-def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
-    jobs = [
+def build_jobs(*, suite: str, include_histgradient_quantile: bool) -> list[SearchJob]:
+    fast_jobs = [
         SearchJob("catboost_rmse_defaultish", "catboost", "RMSE", POINT_MODEL_CONFIGS["catboost"]),
         SearchJob("lightgbm_rmse_defaultish", "lightgbm", "RMSE", POINT_MODEL_CONFIGS["lightgbm"]),
         SearchJob("xgboost_rmse_defaultish", "xgboost", "RMSE", POINT_MODEL_CONFIGS["xgboost"]),
@@ -281,11 +282,9 @@ def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
             "Quantile",
             PROBABILISTIC_MODEL_CONFIGS["lightgbm_quantile"],
         ),
-        SearchJob("extra_trees_rmse_defaultish", "extra_trees", "RMSE", POINT_MODEL_CONFIGS["extra_trees"]),
-        SearchJob("random_forest_rmse_defaultish", "random_forest", "RMSE", POINT_MODEL_CONFIGS["random_forest"]),
     ]
     if include_histgradient_quantile:
-        jobs.append(
+        fast_jobs.append(
             SearchJob(
                 "histgradientboosting_quantile_defaultish",
                 "histgradientboosting",
@@ -293,8 +292,18 @@ def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
                 PROBABILISTIC_MODEL_CONFIGS["histgradientboosting_quantile"],
             )
         )
-    jobs.append(SearchJob("ngboost_normal_defaultish", "ngboost", "Normal", PROBABILISTIC_MODEL_CONFIGS["ngboost"]))
-    return jobs
+    long_jobs = [
+        SearchJob("extra_trees_rmse_defaultish", "extra_trees", "RMSE", POINT_MODEL_CONFIGS["extra_trees"]),
+        SearchJob("random_forest_rmse_defaultish", "random_forest", "RMSE", POINT_MODEL_CONFIGS["random_forest"]),
+        SearchJob("ngboost_normal_defaultish", "ngboost", "Normal", PROBABILISTIC_MODEL_CONFIGS["ngboost"]),
+    ]
+    if suite == "fast":
+        return fast_jobs
+    if suite == "long":
+        return long_jobs
+    if suite == "all":
+        return [*fast_jobs, *long_jobs]
+    raise ValueError(f"Unknown suite: {suite}")
 
 
 def filter_jobs(
@@ -780,12 +789,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a minimal fixed-config benchmark for target models.")
     parser.add_argument("--bucket", default=DEFAULT_BUCKET)
     parser.add_argument("--horizon", type=horizon_arg, default=20)
+    parser.add_argument("--suite", choices=["fast", "long", "all"], default="fast")
     parser.add_argument("--dataset-prefix", default=None)
     parser.add_argument("--target", default=None)
     parser.add_argument("--results-subdir", default=DEFAULT_RESULTS_SUBDIR)
+    parser.add_argument(
+        "--results-prefix",
+        default=DEFAULT_RESULTS_PREFIX,
+        help="Root-level S3 prefix for benchmark outputs.",
+    )
     parser.add_argument("--run-id", default=None)
-    parser.add_argument("--max-parallel-models", type=int, default=5)
-    parser.add_argument("--threads-per-model", type=int, default=12)
+    parser.add_argument("--max-parallel-models", type=int, default=None)
+    parser.add_argument("--threads-per-model", type=int, default=None)
     parser.add_argument("--direction-threshold", type=float, default=DEFAULT_DIRECTION_THRESHOLD)
     parser.add_argument("--hmm-feature-prefix", default=DEFAULT_HMM_FEATURE_PREFIX)
     parser.add_argument(
@@ -809,14 +824,33 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def effective_resource_settings(args: argparse.Namespace) -> tuple[int, int]:
+    if args.suite == "long":
+        default_parallel = 1
+        default_threads = 16
+    else:
+        default_parallel = 5
+        default_threads = 12
+    return (
+        args.max_parallel_models if args.max_parallel_models is not None else default_parallel,
+        args.threads_per_model if args.threads_per_model is not None else default_threads,
+    )
+
+
 def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, run_id: str) -> None:
     default_dataset_prefix, default_target = TARGET_SPECS[horizon]
     dataset_prefix = args.dataset_prefix or default_dataset_prefix
     target_column = args.target or default_target
-    output_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/{run_id}"
-    latest_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/latest"
+    output_prefix = f"{args.results_prefix.strip('/')}/{args.suite}/horizon_{horizon}/{run_id}"
+    latest_prefix = f"{args.results_prefix.strip('/')}/{args.suite}/horizon_{horizon}/latest"
+    max_parallel_models, threads_per_model = effective_resource_settings(args)
+    require_hmm_features = (
+        not args.allow_missing_hmm
+        and args.hmm_feature_prefix
+        and "with_price_hmm" in dataset_prefix
+    )
 
-    jobs = build_jobs(include_histgradient_quantile=args.include_histgradient_quantile)
+    jobs = build_jobs(suite=args.suite, include_histgradient_quantile=args.include_histgradient_quantile)
     jobs = filter_jobs(
         jobs,
         include_families=set(args.include_families) if args.include_families else None,
@@ -833,13 +867,15 @@ def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, 
         "dataset_prefix": dataset_prefix,
         "target_column": target_column,
         "results_subdir": args.results_subdir,
+        "results_prefix": args.results_prefix,
+        "suite": args.suite,
         "output_prefix": f"s3://{args.bucket}/{output_prefix}/",
-        "max_parallel_models": args.max_parallel_models,
-        "threads_per_model": args.threads_per_model,
-        "reserved_vcpu_hint": max(0, 32 - args.max_parallel_models * args.threads_per_model),
+        "max_parallel_models": max_parallel_models,
+        "threads_per_model": threads_per_model,
+        "reserved_vcpu_hint": max(0, 64 - max_parallel_models * threads_per_model),
         "direction_threshold": args.direction_threshold,
         "hmm_feature_prefix": args.hmm_feature_prefix,
-        "require_hmm_features": not args.allow_missing_hmm,
+        "require_hmm_features": require_hmm_features,
         "include_histgradient_quantile": args.include_histgradient_quantile,
         "point_model_configs": POINT_MODEL_CONFIGS,
         "probabilistic_model_configs": PROBABILISTIC_MODEL_CONFIGS,
@@ -848,7 +884,14 @@ def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, 
     }
 
     logger.info("run_prefix=s3://%s/%s/", args.bucket, output_prefix)
-    logger.info("jobs=%d max_parallel_models=%d threads_per_model=%d", len(jobs), args.max_parallel_models, args.threads_per_model)
+    logger.info(
+        "suite=%s horizon=%d jobs=%d max_parallel_models=%d threads_per_model=%d",
+        args.suite,
+        horizon,
+        len(jobs),
+        max_parallel_models,
+        threads_per_model,
+    )
     if args.dry_run:
         logger.info("queue_order=%s", ", ".join(job.job_id for job in jobs))
         counts = pd.DataFrame([job.__dict__ for job in jobs]).groupby(
@@ -878,7 +921,7 @@ def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, 
         test,
         target_column,
         hmm_feature_prefix=args.hmm_feature_prefix,
-        require_hmm_features=not args.allow_missing_hmm,
+        require_hmm_features=require_hmm_features,
     )
     logger.info(
         "prepared train_rows=%d test_rows=%d features=%d",
@@ -891,7 +934,7 @@ def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, 
     skipped = 0
     failed = []
     started = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=args.max_parallel_models) as executor:
+    with ThreadPoolExecutor(max_workers=max_parallel_models) as executor:
         futures = {
             executor.submit(
                 run_one_job,
@@ -900,7 +943,7 @@ def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, 
                 bucket=args.bucket,
                 output_prefix=output_prefix,
                 direction_threshold=args.direction_threshold,
-                threads_per_model=args.threads_per_model,
+                threads_per_model=threads_per_model,
                 overwrite=args.overwrite,
             ): job
             for job in jobs
