@@ -260,11 +260,9 @@ def prepare_data(
 
 def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
     jobs = [
-        SearchJob("random_forest_rmse_defaultish", "random_forest", "RMSE", POINT_MODEL_CONFIGS["random_forest"]),
-        SearchJob("extra_trees_rmse_defaultish", "extra_trees", "RMSE", POINT_MODEL_CONFIGS["extra_trees"]),
-        SearchJob("xgboost_rmse_defaultish", "xgboost", "RMSE", POINT_MODEL_CONFIGS["xgboost"]),
-        SearchJob("lightgbm_rmse_defaultish", "lightgbm", "RMSE", POINT_MODEL_CONFIGS["lightgbm"]),
         SearchJob("catboost_rmse_defaultish", "catboost", "RMSE", POINT_MODEL_CONFIGS["catboost"]),
+        SearchJob("lightgbm_rmse_defaultish", "lightgbm", "RMSE", POINT_MODEL_CONFIGS["lightgbm"]),
+        SearchJob("xgboost_rmse_defaultish", "xgboost", "RMSE", POINT_MODEL_CONFIGS["xgboost"]),
         SearchJob(
             "catboost_uncertainty_defaultish",
             "catboost",
@@ -283,7 +281,8 @@ def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
             "Quantile",
             PROBABILISTIC_MODEL_CONFIGS["lightgbm_quantile"],
         ),
-        SearchJob("ngboost_normal_defaultish", "ngboost", "Normal", PROBABILISTIC_MODEL_CONFIGS["ngboost"]),
+        SearchJob("extra_trees_rmse_defaultish", "extra_trees", "RMSE", POINT_MODEL_CONFIGS["extra_trees"]),
+        SearchJob("random_forest_rmse_defaultish", "random_forest", "RMSE", POINT_MODEL_CONFIGS["random_forest"]),
     ]
     if include_histgradient_quantile:
         jobs.append(
@@ -294,6 +293,7 @@ def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
                 PROBABILISTIC_MODEL_CONFIGS["histgradientboosting_quantile"],
             )
         )
+    jobs.append(SearchJob("ngboost_normal_defaultish", "ngboost", "Normal", PROBABILISTIC_MODEL_CONFIGS["ngboost"]))
     return jobs
 
 
@@ -731,13 +731,21 @@ def read_json_object(s3, bucket: str, key: str) -> dict[str, Any]:
     return json.loads(s3.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8"))
 
 
-def collect_metrics(s3, bucket: str, output_prefix: str) -> pd.DataFrame:
+def collect_metrics(
+    s3,
+    bucket: str,
+    output_prefix: str,
+    expected_job_ids: set[str] | None = None,
+) -> pd.DataFrame:
     paginator = s3.get_paginator("list_objects_v2")
     records = []
     for page in paginator.paginate(Bucket=bucket, Prefix=f"{output_prefix}/jobs/"):
         for item in page.get("Contents", []):
             key = item["Key"]
             if key.endswith("/metrics.json"):
+                job_id = key.split("/jobs/", 1)[1].split("/", 1)[0]
+                if expected_job_ids is not None and job_id not in expected_job_ids:
+                    continue
                 records.append(read_json_object(s3, bucket, key))
     return pd.DataFrame(records)
 
@@ -758,10 +766,20 @@ def build_leaderboards(results: pd.DataFrame, top_n: int) -> pd.DataFrame:
     return ranked.loc[ranked["family_loss_rank"].le(top_n)].copy()
 
 
+def horizon_arg(value: str) -> int | str:
+    if value == "all":
+        return value
+    horizon = int(value)
+    if horizon not in TARGET_SPECS:
+        allowed = ", ".join(str(item) for item in sorted(TARGET_SPECS))
+        raise argparse.ArgumentTypeError(f"horizon must be one of: {allowed}, all")
+    return horizon
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a minimal fixed-config benchmark for target models.")
     parser.add_argument("--bucket", default=DEFAULT_BUCKET)
-    parser.add_argument("--horizon", type=int, default=20, choices=sorted(TARGET_SPECS))
+    parser.add_argument("--horizon", type=horizon_arg, default=20)
     parser.add_argument("--dataset-prefix", default=None)
     parser.add_argument("--target", default=None)
     parser.add_argument("--results-subdir", default=DEFAULT_RESULTS_SUBDIR)
@@ -791,11 +809,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    logger = setup_logging()
-    run_id = args.run_id or make_run_id()
-    default_dataset_prefix, default_target = TARGET_SPECS[args.horizon]
+def run_horizon(args: argparse.Namespace, logger: logging.Logger, horizon: int, run_id: str) -> None:
+    default_dataset_prefix, default_target = TARGET_SPECS[horizon]
     dataset_prefix = args.dataset_prefix or default_dataset_prefix
     target_column = args.target or default_target
     output_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/{run_id}"
@@ -811,9 +826,10 @@ def main() -> None:
     )
     if args.limit_jobs is not None:
         jobs = jobs[: args.limit_jobs]
+    expected_job_ids = {job.job_id for job in jobs}
     run_config = {
         "run_id": run_id,
-        "horizon": args.horizon,
+        "horizon": horizon,
         "dataset_prefix": dataset_prefix,
         "target_column": target_column,
         "results_subdir": args.results_subdir,
@@ -834,6 +850,7 @@ def main() -> None:
     logger.info("run_prefix=s3://%s/%s/", args.bucket, output_prefix)
     logger.info("jobs=%d max_parallel_models=%d threads_per_model=%d", len(jobs), args.max_parallel_models, args.threads_per_model)
     if args.dry_run:
+        logger.info("queue_order=%s", ", ".join(job.job_id for job in jobs))
         counts = pd.DataFrame([job.__dict__ for job in jobs]).groupby(
             ["model_family", "loss_function"],
             dropna=False,
@@ -908,7 +925,7 @@ def main() -> None:
                 failed.append({"job_id": job.job_id, "error": str(exc)})
                 logger.exception("FAILED %s", job.job_id)
 
-    results = collect_metrics(s3, args.bucket, output_prefix)
+    results = collect_metrics(s3, args.bucket, output_prefix, expected_job_ids=expected_job_ids)
     leaderboard = build_leaderboards(results, top_n=10)
     upload_parquet(s3, args.bucket, f"{output_prefix}/stage1_results.parquet", results)
     upload_csv(s3, args.bucket, f"{output_prefix}/stage1_results.csv", results)
@@ -932,6 +949,17 @@ def main() -> None:
     logger.info("completed=%d skipped=%d failed=%d elapsed_sec=%.1f", completed, skipped, len(failed), time.perf_counter() - started)
     if failed:
         raise SystemExit(1)
+
+
+def main() -> None:
+    args = parse_args()
+    logger = setup_logging()
+    run_id = args.run_id or make_run_id()
+    horizons = sorted(TARGET_SPECS) if args.horizon == "all" else [int(args.horizon)]
+    if args.horizon == "all" and (args.dataset_prefix or args.target):
+        raise ValueError("--dataset-prefix and --target can only be used with a single --horizon value")
+    for horizon in horizons:
+        run_horizon(args, logger, horizon, run_id)
 
 
 if __name__ == "__main__":

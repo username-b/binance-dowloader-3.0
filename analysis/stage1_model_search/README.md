@@ -22,6 +22,10 @@ Optionally add HistGradientBoosting Quantile with `--include-histgradient-quanti
 There is no grid search; model parameters are intentionally close to defaults and use
 500 boosting/tree iterations where applicable.
 
+Jobs are submitted in a reliable-first order: CatBoost RMSE, LightGBM RMSE, XGBoost,
+CatBoost uncertainty, CatBoost quantile, LightGBM quantile, Extra Trees, Random Forest,
+optional HistGradientBoosting quantile, then NGBoost.
+
 ## Metrics
 
 Point metrics are written for every model:
@@ -69,6 +73,15 @@ python analysis\stage1_model_search\train_stage1_architecture_search.py `
 This uses up to about 60 model worker threads and leaves a small reserve for Python,
 S3 I/O, and system work. If RAM pressure appears, reduce `--max-parallel-models` to
 3 or 4 while keeping `--threads-per-model 12`.
+
+To run all supported horizons sequentially:
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon all `
+  --max-parallel-models 5 `
+  --threads-per-model 12
+```
 
 To include the optional fifth probabilistic model:
 
