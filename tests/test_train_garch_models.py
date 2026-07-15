@@ -8,6 +8,11 @@ from analysis.garch_experiments.train_garch_models import (
     clean_returns,
     standardized_student_logpdf,
 )
+from analysis.garch_experiments.evaluate_point_garch_combinations import (
+    build_point_garch_forecasts,
+    evaluate_point_garch_combinations,
+    select_garch_models,
+)
 
 
 def test_model_specs_match_required_garch_family_grid():
@@ -45,3 +50,89 @@ def test_standardized_student_logpdf_is_symmetric_and_finite_for_valid_nu():
     assert np.isfinite(logpdf).all()
     assert math.isclose(logpdf[0], logpdf[2])
     assert logpdf[1] > logpdf[0]
+
+
+def test_evaluate_point_garch_combinations_scores_hybrid_distribution():
+    timestamps = pd.date_range("2024-01-01", periods=5, freq="min", tz="UTC")
+    point_predictions = {
+        "point_a": pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "y_true": [0.01, -0.02, 0.015, 0.0, 0.005],
+                "y_pred": [0.008, -0.018, 0.010, 0.001, 0.004],
+            }
+        )
+    }
+    garch_results = pd.DataFrame({"model_name": ["garch_1_1"], "test_nll": [1.0], "nu": [6.0]})
+    garch_predictions = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "model_name": "garch_1_1",
+            "volatility_forecast": [0.01, 0.012, 0.011, 0.009, 0.010],
+            "variance_forecast": [0.0001, 0.000144, 0.000121, 0.000081, 0.0001],
+        }
+    )
+
+    results = evaluate_point_garch_combinations(
+        point_predictions=point_predictions,
+        garch_results=garch_results,
+        garch_predictions=garch_predictions,
+    )
+
+    assert results.loc[0, "model_name"] == "point_a+garch_1_1_studentst"
+    assert np.isfinite(results.loc[0, "NLL"])
+    assert 0.0 <= results.loc[0, "Coverage90"] <= 1.0
+
+
+def test_evaluate_point_garch_combinations_scores_all_garch_models_and_exports_forecasts():
+    timestamps = pd.date_range("2024-01-01", periods=4, freq="min", tz="UTC")
+    point_predictions = {
+        "point_a": pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "y_true": [0.01, -0.02, 0.015, 0.0],
+                "y_pred": [0.008, -0.018, 0.010, 0.001],
+            }
+        )
+    }
+    garch_results = pd.DataFrame(
+        {
+            "model_name": ["egarch_1_1", "garch_1_1"],
+            "test_nll": [1.5, 1.0],
+            "nu": [7.0, 6.0],
+        }
+    )
+    garch_predictions = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "timestamp": timestamps,
+                    "model_name": model_name,
+                    "volatility_forecast": sigma,
+                    "variance_forecast": np.square(sigma),
+                }
+            )
+            for model_name, sigma in [
+                ("egarch_1_1", np.array([0.011, 0.013, 0.012, 0.010])),
+                ("garch_1_1", np.array([0.010, 0.012, 0.011, 0.009])),
+            ]
+        ],
+        ignore_index=True,
+    )
+
+    selected = select_garch_models(garch_results, selection="all")
+    results = evaluate_point_garch_combinations(
+        point_predictions=point_predictions,
+        garch_results=garch_results,
+        garch_predictions=garch_predictions,
+    )
+    forecasts = build_point_garch_forecasts(
+        point_predictions=point_predictions,
+        garch_results=garch_results,
+        garch_predictions=garch_predictions,
+    )
+
+    assert selected == ["garch_1_1", "egarch_1_1"]
+    assert set(results["garch_model"]) == {"garch_1_1", "egarch_1_1"}
+    assert len(forecasts) == len(timestamps) * 2
+    assert {"q05", "q25", "q50", "q75", "q95"}.issubset(forecasts.columns)

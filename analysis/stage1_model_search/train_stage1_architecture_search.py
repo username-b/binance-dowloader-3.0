@@ -397,6 +397,9 @@ def build_point_metrics(
     residual = y_true - y_pred
     sse = float(np.square(residual).sum())
     baseline_zero_sse = float(np.square(y_true).sum())
+    rmse = float(math.sqrt(mean_squared_error(y_true, y_pred)))
+    target_std = float(np.std(y_true))
+    target_range = float(np.max(y_true) - np.min(y_true))
     da_025, da_025_coverage, da_025_count = threshold_direction_accuracy(
         y_true,
         y_pred,
@@ -414,7 +417,10 @@ def build_point_metrics(
         "alpha": job.alpha,
         "params": json.dumps(job.params, ensure_ascii=False, sort_keys=True),
         "MAE": float(mean_absolute_error(y_true, y_pred)),
-        "RMSE": float(math.sqrt(mean_squared_error(y_true, y_pred))),
+        "RMSE": rmse,
+        "NRMSE": float(rmse / target_std) if target_std > 0 else np.nan,
+        "NRMSE_std": float(rmse / target_std) if target_std > 0 else np.nan,
+        "NRMSE_range": float(rmse / target_range) if target_range > 0 else np.nan,
         "R2": float(r2_score(y_true, y_pred)),
         "OOS_R2": float(1.0 - sse / baseline_zero_sse) if baseline_zero_sse > 0 else np.nan,
         "Direction_Accuracy": direction_accuracy(y_true, y_pred),
@@ -427,6 +433,9 @@ def build_point_metrics(
         "error_std": float(np.std(residual)),
         "error_skew": float(skew(residual, nan_policy="omit")),
         "error_kurtosis": float(kurtosis(residual, nan_policy="omit")),
+        "target_mean": float(np.mean(y_true)),
+        "target_std": target_std,
+        "target_range": target_range,
         "PinballLoss_05": np.nan,
         "PinballLoss_25": np.nan,
         "PinballLoss_50": np.nan,
