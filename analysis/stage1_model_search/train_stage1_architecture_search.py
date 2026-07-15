@@ -369,7 +369,7 @@ def quantile_crps_approx(y_true: np.ndarray, quantiles: dict[float, np.ndarray])
         return np.nan
     losses = np.array([2.0 * pinball_loss(y_true, values, alpha) for alpha, values in available])
     alphas = np.array([alpha for alpha, _ in available], dtype=float)
-    return float(np.trapz(losses, alphas))
+    return float(np.trapezoid(losses, alphas))
 
 
 def build_point_metrics(
