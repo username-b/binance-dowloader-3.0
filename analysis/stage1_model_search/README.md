@@ -1,8 +1,86 @@
-# Stage 1 Architecture Search
+# Stage 1 Minimal Model Benchmark
 
-First-stage model search for target return horizons. The default production run is for
-`target_log_return_20m` from `dataset_target_20/with_price_hmm_n4` and excludes LightGBM
-quantile models so the overnight run stays bounded.
+Fixed-config benchmark for target return horizons. The default run is for
+`target_log_return_20m` from `dataset_target_20/with_price_hmm_n4`.
+
+The runner trains 5 point ML models:
+
+- Random Forest
+- Extra Trees
+- XGBoost
+- LightGBM
+- CatBoost
+
+And 4 probabilistic models by default:
+
+- CatBoost `RMSEWithUncertainty`
+- CatBoost `MultiQuantile`
+- LightGBM `Quantile`
+- NGBoost Normal
+
+Optionally add HistGradientBoosting Quantile with `--include-histgradient-quantile`.
+There is no grid search; model parameters are intentionally close to defaults and use
+500 boosting/tree iterations where applicable.
+
+## Metrics
+
+Point metrics are written for every model:
+
+- `MAE`
+- `RMSE`
+- `Direction_Accuracy`
+- `Direction_Accuracy_0.25%`
+- `R2`
+- `OOS_R2`
+- `train_time`
+- `predict_time`
+
+Probabilistic metrics are filled where the model exposes quantiles or a normal
+distribution:
+
+- `PinballLoss_05`, `PinballLoss_25`, `PinballLoss_50`, `PinballLoss_75`,
+  `PinballLoss_95`
+- `CRPS`
+- `Coverage90`
+- `IntervalWidth90`
+- `NLL` when normal uncertainty is available
+
+## Smoke Checks
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20
+python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20 --include-histgradient-quantile
+```
+
+Expected queue sizes:
+
+- Base run: 9 jobs.
+- With HistGradientBoosting Quantile: 10 jobs.
+
+## Recommended Run For 64 vCPU / 256 GB RAM
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon 20 `
+  --max-parallel-models 5 `
+  --threads-per-model 12
+```
+
+This uses up to about 60 model worker threads and leaves a small reserve for Python,
+S3 I/O, and system work. If RAM pressure appears, reduce `--max-parallel-models` to
+3 or 4 while keeping `--threads-per-model 12`.
+
+To include the optional fifth probabilistic model:
+
+```powershell
+python analysis\stage1_model_search\train_stage1_architecture_search.py `
+  --horizon 20 `
+  --max-parallel-models 5 `
+  --threads-per-model 12 `
+  --include-histgradient-quantile
+```
+
+## HMM Features
 
 The HMM posterior probability features are included by default:
 
@@ -13,42 +91,10 @@ The HMM posterior probability features are included by default:
 
 The runner requires these columns unless `--allow-missing-hmm` is passed.
 
-## Smoke checks
+## S3 Layout
 
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20
-python analysis\stage1_model_search\train_stage1_architecture_search.py --dry-run --horizon 20 --include-lightgbm-quantile
-```
-
-Expected queue sizes:
-
-- Base run: 135 jobs.
-- With LightGBM Quantile: 270 jobs.
-
-## Recommended first run
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py `
-  --horizon 20 `
-  --max-parallel-models 6 `
-  --threads-per-model 4
-```
-
-This uses about 24 worker threads and leaves CPU/RAM reserve on a 32 vCPU, 128 GB host.
-
-## Optional extended run
-
-```powershell
-python analysis\stage1_model_search\train_stage1_architecture_search.py `
-  --horizon 20 `
-  --max-parallel-models 6 `
-  --threads-per-model 4 `
-  --include-lightgbm-quantile
-```
-
-## S3 layout
-
-For a run under `s3://binance-data-downloader/dataset_target_20/with_price_hmm_n4/stage1_architecture_search/<run_id>/`:
+For a run under
+`s3://binance-data-downloader/dataset_target_20/with_price_hmm_n4/stage1_architecture_search/<run_id>/`:
 
 - `run_config.json`
 - `job_queue.parquet`
@@ -63,60 +109,12 @@ For a run under `s3://binance-data-downloader/dataset_target_20/with_price_hmm_n
 - `leaderboard_top10.csv`
 - `run_summary.json`
 
-The script resumes by default: if `jobs/<job_id>/metrics.json` already exists, that job is
-skipped. Use `--overwrite` to retrain existing jobs.
-
-## Results analysis
-
-Open `stage1_results_overview.ipynb` after a run. It reads the `latest` S3 prefix by
-default and resolves it to the concrete run id from `run_config.json`. If the final
-`stage1_results.parquet` is not present yet, it analyzes partial results from
-`jobs/*/metrics.json`.
-
-The notebook is designed to prune the hyperparameter space, not just pick a winner. It
-builds Top-10 tables for RMSE/MAE/direction/composite score, summarizes every
-hyperparameter with distribution plots and Top-10 counts, draws pairwise heatmaps,
-estimates hyperparameter importance with a RandomForest surrogate, shows partial
-dependence, cost-quality correlations, Pareto frontier, stability of Top-N models,
-early-stop diagnostics, HMM feature-importance checks, and an automatically justified
-`GRID_STAGE2`.
-
-`stage1_final_overview.ipynb` is a shorter decision report for the completed
-non-MultiQuantile Stage 1 result table. It records the recommended Stage 2 seed
-architectures and pruning decisions.
-
-## Stage 2 regularization search
-
-Stage 2 is implemented in `train_stage2_regularization_search.py`. It reuses the Stage 1
-S3 artifact format and trains CatBoost `RMSEWithUncertainty` around the best Stage 1
-architectures:
-
-```powershell
-python analysis\stage1_model_search\train_stage2_regularization_search.py `
-  --mode main `
-  --max-parallel-models 4 `
-  --threads-per-model 4
-```
-
-Queue sizes:
-
-- `--mode main`: 288 CatBoost `RMSEWithUncertainty` jobs.
-- `--mode fast`: 144 CatBoost `RMSEWithUncertainty` jobs.
-- `--mode fast --include-lightgbm`: 252 jobs, adding 108 LightGBM regularization jobs.
-
-The Stage 2 output prefix is:
-
-`s3://binance-data-downloader/dataset_target_20/with_price_hmm_n4/stage2_regularization_search/<run_id>/`
-
-The script resumes by job id in the same way as Stage 1.
-
-Open `stage2_results_overview.ipynb` to analyze Stage 2. It reads `latest`, resolves the
-concrete run id from `run_config.json`, and uses `stage2_results.parquet` when available.
-If the final table is not present yet, it analyzes partial results from `jobs/*/metrics.json`.
+The script resumes by default: if `jobs/<job_id>/metrics.json` already exists, that job
+is skipped. Use `--overwrite` to retrain existing jobs.
 
 ## Dependencies
 
-Install/update dependencies before a real CatBoost run:
+Install/update dependencies before a real run:
 
 ```powershell
 pip install -r requirements.txt

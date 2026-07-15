@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 from botocore.exceptions import ClientError
 from scipy.stats import kurtosis, pearsonr, skew, spearmanr
+from scipy.stats import norm
+from sklearn.ensemble import ExtraTreesRegressor, HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
@@ -31,6 +33,61 @@ DEFAULT_RESULTS_SUBDIR = "stage1_architecture_search"
 DEFAULT_DIRECTION_THRESHOLD = 0.0025
 DEFAULT_HMM_FEATURE_PREFIX = "price_hmm_n4"
 QUANTILE_ALPHAS = (0.05, 0.25, 0.50, 0.75, 0.95)
+POINT_MODEL_CONFIGS: dict[str, dict[str, Any]] = {
+    "random_forest": {
+        "n_estimators": 500,
+        "max_features": "sqrt",
+        "random_state": 42,
+    },
+    "extra_trees": {
+        "n_estimators": 500,
+        "max_features": "sqrt",
+        "random_state": 42,
+    },
+    "xgboost": {
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "max_depth": 6,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+    },
+    "lightgbm": {
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": -1,
+    },
+    "catboost": {
+        "iterations": 500,
+        "depth": 6,
+        "learning_rate": 0.05,
+    },
+}
+PROBABILISTIC_MODEL_CONFIGS: dict[str, dict[str, Any]] = {
+    "catboost_uncertainty": {
+        "iterations": 500,
+        "depth": 6,
+        "learning_rate": 0.05,
+    },
+    "catboost_quantile": {
+        "iterations": 500,
+        "depth": 6,
+        "learning_rate": 0.05,
+    },
+    "lightgbm_quantile": {
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": -1,
+    },
+    "ngboost": {},
+    "histgradientboosting_quantile": {
+        "learning_rate": 0.05,
+        "max_iter": 500,
+        "max_leaf_nodes": 31,
+        "l2_regularization": 0.0,
+    },
+}
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -201,77 +258,42 @@ def prepare_data(
     )
 
 
-def catboost_grid() -> list[dict[str, Any]]:
-    return [
-        {
-            "depth": depth,
-            "learning_rate": learning_rate,
-            "l2_leaf_reg": l2_leaf_reg,
-            "bootstrap_type": "Bayesian",
-            "iterations": 3000,
-        }
-        for depth in (4, 6, 8, 10)
-        for learning_rate in (0.03, 0.05, 0.10)
-        for l2_leaf_reg in (3, 10, 30)
+def build_jobs(*, include_histgradient_quantile: bool) -> list[SearchJob]:
+    jobs = [
+        SearchJob("random_forest_rmse_defaultish", "random_forest", "RMSE", POINT_MODEL_CONFIGS["random_forest"]),
+        SearchJob("extra_trees_rmse_defaultish", "extra_trees", "RMSE", POINT_MODEL_CONFIGS["extra_trees"]),
+        SearchJob("xgboost_rmse_defaultish", "xgboost", "RMSE", POINT_MODEL_CONFIGS["xgboost"]),
+        SearchJob("lightgbm_rmse_defaultish", "lightgbm", "RMSE", POINT_MODEL_CONFIGS["lightgbm"]),
+        SearchJob("catboost_rmse_defaultish", "catboost", "RMSE", POINT_MODEL_CONFIGS["catboost"]),
+        SearchJob(
+            "catboost_uncertainty_defaultish",
+            "catboost",
+            "RMSEWithUncertainty",
+            PROBABILISTIC_MODEL_CONFIGS["catboost_uncertainty"],
+        ),
+        SearchJob(
+            "catboost_multiquantile_defaultish",
+            "catboost",
+            "MultiQuantile",
+            PROBABILISTIC_MODEL_CONFIGS["catboost_quantile"],
+        ),
+        SearchJob(
+            "lightgbm_quantile_defaultish",
+            "lightgbm",
+            "Quantile",
+            PROBABILISTIC_MODEL_CONFIGS["lightgbm_quantile"],
+        ),
+        SearchJob("ngboost_normal_defaultish", "ngboost", "Normal", PROBABILISTIC_MODEL_CONFIGS["ngboost"]),
     ]
-
-
-def lightgbm_grid() -> list[dict[str, Any]]:
-    return [
-        {
-            "num_leaves": num_leaves,
-            "learning_rate": learning_rate,
-            "max_depth": max_depth,
-            "feature_fraction": 0.8,
-            "bagging_fraction": 0.8,
-            "bagging_freq": 1,
-            "n_estimators": 3000,
-        }
-        for num_leaves in (31, 63, 127)
-        for learning_rate in (0.03, 0.05, 0.10)
-        for max_depth in (6, 10, -1)
-    ]
-
-
-def build_jobs(include_lightgbm_quantile: bool) -> list[SearchJob]:
-    jobs: list[SearchJob] = []
-    for index, params in enumerate(catboost_grid(), start=1):
-        suffix = f"d{params['depth']}_lr{params['learning_rate']}_l2{params['l2_leaf_reg']}"
-        jobs.append(SearchJob(f"catboost_rmse_{index:03d}_{suffix}", "catboost", "RMSE", params))
+    if include_histgradient_quantile:
         jobs.append(
             SearchJob(
-                f"catboost_multiquantile_{index:03d}_{suffix}",
-                "catboost",
-                "MultiQuantile",
-                params,
+                "histgradientboosting_quantile_defaultish",
+                "histgradientboosting",
+                "Quantile",
+                PROBABILISTIC_MODEL_CONFIGS["histgradientboosting_quantile"],
             )
         )
-        jobs.append(
-            SearchJob(
-                f"catboost_uncertainty_{index:03d}_{suffix}",
-                "catboost",
-                "RMSEWithUncertainty",
-                params,
-            )
-        )
-
-    for index, params in enumerate(lightgbm_grid(), start=1):
-        suffix = (
-            f"leaves{params['num_leaves']}_lr{params['learning_rate']}_"
-            f"depth{params['max_depth']}"
-        )
-        jobs.append(SearchJob(f"lightgbm_rmse_{index:03d}_{suffix}", "lightgbm", "RMSE", params))
-        if include_lightgbm_quantile:
-            for alpha in QUANTILE_ALPHAS:
-                jobs.append(
-                    SearchJob(
-                        f"lightgbm_quantile_a{alpha:g}_{index:03d}_{suffix}",
-                        "lightgbm",
-                        "Quantile",
-                        params,
-                        alpha=alpha,
-                    )
-                )
     return jobs
 
 
@@ -334,6 +356,22 @@ def normal_nll(y_true: np.ndarray, mean: np.ndarray, sigma: np.ndarray) -> float
     return float(np.mean(0.5 * np.log(2.0 * math.pi * sigma**2) + ((y_true - mean) ** 2) / (2.0 * sigma**2)))
 
 
+def normal_crps(y_true: np.ndarray, mean: np.ndarray, sigma: np.ndarray) -> float:
+    sigma = np.maximum(sigma, 1e-12)
+    z = (y_true - mean) / sigma
+    values = sigma * (z * (2.0 * norm.cdf(z) - 1.0) + 2.0 * norm.pdf(z) - 1.0 / math.sqrt(math.pi))
+    return float(np.mean(values))
+
+
+def quantile_crps_approx(y_true: np.ndarray, quantiles: dict[float, np.ndarray]) -> float:
+    available = [(alpha, quantiles[alpha]) for alpha in sorted(quantiles) if 0.0 < alpha < 1.0]
+    if len(available) < 2:
+        return np.nan
+    losses = np.array([2.0 * pinball_loss(y_true, values, alpha) for alpha, values in available])
+    alphas = np.array([alpha for alpha, _ in available], dtype=float)
+    return float(np.trapz(losses, alphas))
+
+
 def build_point_metrics(
     *,
     job: SearchJob,
@@ -348,6 +386,8 @@ def build_point_metrics(
     sigma: np.ndarray | None = None,
 ) -> dict[str, Any]:
     residual = y_true - y_pred
+    sse = float(np.square(residual).sum())
+    baseline_zero_sse = float(np.square(y_true).sum())
     da_025, da_025_coverage, da_025_count = threshold_direction_accuracy(
         y_true,
         y_pred,
@@ -367,6 +407,7 @@ def build_point_metrics(
         "MAE": float(mean_absolute_error(y_true, y_pred)),
         "RMSE": float(math.sqrt(mean_squared_error(y_true, y_pred))),
         "R2": float(r2_score(y_true, y_pred)),
+        "OOS_R2": float(1.0 - sse / baseline_zero_sse) if baseline_zero_sse > 0 else np.nan,
         "Direction_Accuracy": direction_accuracy(y_true, y_pred),
         "Direction_Accuracy_0.25%": da_025,
         "DA_025_coverage": da_025_coverage,
@@ -400,6 +441,15 @@ def build_point_metrics(
             row["IntervalWidth90"] = float(np.mean(upper - lower))
     if sigma is not None:
         row["NLL"] = normal_nll(y_true, y_pred, sigma)
+        row["CRPS"] = normal_crps(y_true, y_pred, sigma)
+        z90 = float(norm.ppf(0.95))
+        lower = y_pred - z90 * np.maximum(sigma, 1e-12)
+        upper = y_pred + z90 * np.maximum(sigma, 1e-12)
+        row["Coverage90"] = float(((y_true >= lower) & (y_true <= upper)).mean())
+        row["IntervalWidth90"] = float(np.mean(upper - lower))
+    if quantiles:
+        if pd.isna(row["CRPS"]):
+            row["CRPS"] = quantile_crps_approx(y_true, quantiles)
     return row
 
 
@@ -446,24 +496,16 @@ def fit_catboost(job: SearchJob, data: PreparedData, threads_per_model: int) -> 
     return model, y_pred, quantiles, sigma, fit_time, predict_time
 
 
-def fit_lightgbm(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
-    try:
-        from lightgbm import LGBMRegressor
-    except ImportError as exc:
-        raise RuntimeError("lightgbm is not installed. Run: pip install lightgbm") from exc
-
-    objective = "quantile" if job.loss_function == "Quantile" else "regression"
+def fit_sklearn_forest(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
+    estimator_cls = {
+        "random_forest": RandomForestRegressor,
+        "extra_trees": ExtraTreesRegressor,
+    }[job.model_family]
     params = {
         **job.params,
-        "objective": objective,
-        "random_state": 42,
         "n_jobs": threads_per_model,
-        "verbosity": -1,
     }
-    if job.alpha is not None:
-        params["alpha"] = job.alpha
-
-    model = LGBMRegressor(**params)
+    model = estimator_cls(**params)
     started = time.perf_counter()
     model.fit(data.X_train, data.y_train)
     fit_time = time.perf_counter() - started
@@ -471,8 +513,122 @@ def fit_lightgbm(job: SearchJob, data: PreparedData, threads_per_model: int) -> 
     started = time.perf_counter()
     y_pred = np.asarray(model.predict(data.X_test)).reshape(-1)
     predict_time = time.perf_counter() - started
-    quantiles = {job.alpha: y_pred} if job.alpha is not None else None
-    return model, y_pred, quantiles, None, fit_time, predict_time
+    return model, y_pred, None, None, fit_time, predict_time
+
+
+def fit_xgboost(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
+    try:
+        from xgboost import XGBRegressor
+    except ImportError as exc:
+        raise RuntimeError("xgboost is not installed. Run: pip install xgboost") from exc
+
+    params = {
+        **job.params,
+        "objective": "reg:squarederror",
+        "random_state": 42,
+        "n_jobs": threads_per_model,
+        "tree_method": "hist",
+    }
+    model = XGBRegressor(**params)
+    started = time.perf_counter()
+    model.fit(data.X_train, data.y_train, verbose=False)
+    fit_time = time.perf_counter() - started
+
+    started = time.perf_counter()
+    y_pred = np.asarray(model.predict(data.X_test)).reshape(-1)
+    predict_time = time.perf_counter() - started
+    return model, y_pred, None, None, fit_time, predict_time
+
+
+def fit_lightgbm(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
+    try:
+        from lightgbm import LGBMRegressor
+    except ImportError as exc:
+        raise RuntimeError("lightgbm is not installed. Run: pip install lightgbm") from exc
+
+    base_params = {
+        **job.params,
+        "random_state": 42,
+        "n_jobs": threads_per_model,
+        "verbosity": -1,
+    }
+    if job.loss_function == "Quantile":
+        models = {}
+        quantiles = {}
+        fit_time = 0.0
+        predict_time = 0.0
+        for alpha in QUANTILE_ALPHAS:
+            model = LGBMRegressor(**base_params, objective="quantile", alpha=alpha)
+            started = time.perf_counter()
+            model.fit(data.X_train, data.y_train)
+            fit_time += time.perf_counter() - started
+
+            started = time.perf_counter()
+            quantiles[alpha] = np.asarray(model.predict(data.X_test)).reshape(-1)
+            predict_time += time.perf_counter() - started
+            models[f"q{int(alpha * 100):02d}"] = model
+        return models, quantiles[0.50], quantiles, None, fit_time, predict_time
+
+    model = LGBMRegressor(**base_params, objective="regression")
+    started = time.perf_counter()
+    model.fit(data.X_train, data.y_train)
+    fit_time = time.perf_counter() - started
+
+    started = time.perf_counter()
+    y_pred = np.asarray(model.predict(data.X_test)).reshape(-1)
+    predict_time = time.perf_counter() - started
+    return model, y_pred, None, None, fit_time, predict_time
+
+
+def fit_histgradientboosting(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
+    models = {}
+    quantiles = {}
+    fit_time = 0.0
+    predict_time = 0.0
+    for alpha in QUANTILE_ALPHAS:
+        model = HistGradientBoostingRegressor(
+            **job.params,
+            loss="quantile",
+            quantile=alpha,
+            random_state=42,
+        )
+        started = time.perf_counter()
+        model.fit(data.X_train, data.y_train)
+        fit_time += time.perf_counter() - started
+
+        started = time.perf_counter()
+        quantiles[alpha] = np.asarray(model.predict(data.X_test)).reshape(-1)
+        predict_time += time.perf_counter() - started
+        models[f"q{int(alpha * 100):02d}"] = model
+    return models, quantiles[0.50], quantiles, None, fit_time, predict_time
+
+
+def fit_ngboost(job: SearchJob, data: PreparedData, threads_per_model: int) -> tuple[Any, np.ndarray, dict[float, np.ndarray] | None, np.ndarray | None, float, float]:
+    try:
+        from ngboost import NGBRegressor
+        from ngboost.distns import Normal
+    except ImportError as exc:
+        raise RuntimeError("ngboost is not installed. Run: pip install ngboost") from exc
+
+    params = {
+        "n_estimators": 500,
+        "learning_rate": 0.01,
+        "random_state": 42,
+        "verbose": False,
+        **job.params,
+    }
+    model = NGBRegressor(Dist=Normal, **params)
+    started = time.perf_counter()
+    model.fit(data.X_train, data.y_train)
+    fit_time = time.perf_counter() - started
+
+    started = time.perf_counter()
+    y_pred = np.asarray(model.predict(data.X_test)).reshape(-1)
+    dist = model.pred_dist(data.X_test)
+    predict_time = time.perf_counter() - started
+    sigma = np.asarray(dist.scale).reshape(-1)
+    quantiles = {alpha: np.asarray(dist.ppf(alpha)).reshape(-1) for alpha in QUANTILE_ALPHAS}
+    return model, y_pred, quantiles, sigma, fit_time, predict_time
 
 
 def feature_importance_frame(model: Any, feature_columns: list[str]) -> pd.DataFrame:
@@ -499,6 +655,10 @@ def predictions_frame(
             frame[f"q{int(alpha * 100):02d}"] = values
     if sigma is not None:
         frame["sigma"] = sigma
+        if "q05" not in frame.columns:
+            z90 = float(norm.ppf(0.95))
+            frame["q05"] = y_pred - z90 * np.maximum(sigma, 1e-12)
+            frame["q95"] = y_pred + z90 * np.maximum(sigma, 1e-12)
     return frame
 
 
@@ -519,10 +679,18 @@ def run_one_job(
         return {"job_id": job.job_id, "status": "skipped", "metrics_key": metrics_key}
 
     started = time.perf_counter()
-    if job.model_family == "catboost":
+    if job.model_family in {"random_forest", "extra_trees"}:
+        model, y_pred, quantiles, sigma, fit_time, predict_time = fit_sklearn_forest(job, data, threads_per_model)
+    elif job.model_family == "xgboost":
+        model, y_pred, quantiles, sigma, fit_time, predict_time = fit_xgboost(job, data, threads_per_model)
+    elif job.model_family == "catboost":
         model, y_pred, quantiles, sigma, fit_time, predict_time = fit_catboost(job, data, threads_per_model)
     elif job.model_family == "lightgbm":
         model, y_pred, quantiles, sigma, fit_time, predict_time = fit_lightgbm(job, data, threads_per_model)
+    elif job.model_family == "ngboost":
+        model, y_pred, quantiles, sigma, fit_time, predict_time = fit_ngboost(job, data, threads_per_model)
+    elif job.model_family == "histgradientboosting":
+        model, y_pred, quantiles, sigma, fit_time, predict_time = fit_histgradientboosting(job, data, threads_per_model)
     else:
         raise ValueError(f"Unknown model family: {job.model_family}")
 
@@ -591,15 +759,15 @@ def build_leaderboards(results: pd.DataFrame, top_n: int) -> pd.DataFrame:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Stage 1 architecture search for target models.")
+    parser = argparse.ArgumentParser(description="Run a minimal fixed-config benchmark for target models.")
     parser.add_argument("--bucket", default=DEFAULT_BUCKET)
     parser.add_argument("--horizon", type=int, default=20, choices=sorted(TARGET_SPECS))
     parser.add_argument("--dataset-prefix", default=None)
     parser.add_argument("--target", default=None)
     parser.add_argument("--results-subdir", default=DEFAULT_RESULTS_SUBDIR)
     parser.add_argument("--run-id", default=None)
-    parser.add_argument("--max-parallel-models", type=int, default=6)
-    parser.add_argument("--threads-per-model", type=int, default=4)
+    parser.add_argument("--max-parallel-models", type=int, default=5)
+    parser.add_argument("--threads-per-model", type=int, default=12)
     parser.add_argument("--direction-threshold", type=float, default=DEFAULT_DIRECTION_THRESHOLD)
     parser.add_argument("--hmm-feature-prefix", default=DEFAULT_HMM_FEATURE_PREFIX)
     parser.add_argument(
@@ -607,7 +775,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow training even if the selected dataset has no HMM probability features.",
     )
-    parser.add_argument("--include-lightgbm-quantile", action="store_true")
+    parser.add_argument("--include-histgradient-quantile", action="store_true")
     parser.add_argument("--include-families", nargs="+", default=None)
     parser.add_argument("--exclude-families", nargs="+", default=[])
     parser.add_argument("--include-losses", nargs="+", default=None)
@@ -633,7 +801,7 @@ def main() -> None:
     output_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/{run_id}"
     latest_prefix = f"{dataset_prefix.strip('/')}/{args.results_subdir.strip('/')}/latest"
 
-    jobs = build_jobs(args.include_lightgbm_quantile)
+    jobs = build_jobs(include_histgradient_quantile=args.include_histgradient_quantile)
     jobs = filter_jobs(
         jobs,
         include_families=set(args.include_families) if args.include_families else None,
@@ -656,7 +824,9 @@ def main() -> None:
         "direction_threshold": args.direction_threshold,
         "hmm_feature_prefix": args.hmm_feature_prefix,
         "require_hmm_features": not args.allow_missing_hmm,
-        "include_lightgbm_quantile": args.include_lightgbm_quantile,
+        "include_histgradient_quantile": args.include_histgradient_quantile,
+        "point_model_configs": POINT_MODEL_CONFIGS,
+        "probabilistic_model_configs": PROBABILISTIC_MODEL_CONFIGS,
         "jobs": len(jobs),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
     }

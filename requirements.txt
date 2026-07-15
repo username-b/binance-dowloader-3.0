@@ -15,4 +15,6 @@ joblib
 threadpoolctl
 catboost
 lightgbm
+xgboost
+ngboost
 arch
