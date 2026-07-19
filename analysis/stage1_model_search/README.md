@@ -137,3 +137,26 @@ Install/update dependencies before a real run:
 ```powershell
 pip install -r requirements.txt
 ```
+
+## GARCH Interval Calibration
+
+Calibrate GARCH Student-t interval widths with a validation/eval split:
+
+```powershell
+python analysis\garch_experiments\calibrate_garch_intervals.py `
+  --horizon 10
+
+python analysis\garch_experiments\calibrate_garch_intervals.py `
+  --horizon 30
+```
+
+The script reads `dataset_target_<N>/garch_experiments/latest`, filters pathological
+GARCH fits, chooses a multiplicative `sigma_scale` on the first half of the test split
+to target `Coverage90 ~= 0.90`, and reports metrics on the second half.
+
+Outputs are stored under:
+
+`s3://binance-data-downloader/garch_interval_calibration/horizon_<N>/<run_id>/`
+
+Use `--dry-run` to print calibrated metrics without uploading. Horizon 20 requires a
+GARCH run under `dataset_target_20/with_price_hmm_n4/garch_experiments/latest` first.
