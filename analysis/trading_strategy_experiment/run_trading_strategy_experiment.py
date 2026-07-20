@@ -145,16 +145,21 @@ def fit_selected_point_model(
     baseline_results: pd.DataFrame,
     spec: ExperimentSpec,
     target_column: str,
-) -> tuple[Any, pd.Series, pd.DataFrame, dict[str, Any]]:
+) -> tuple[Any, pd.Series, np.ndarray, pd.DataFrame, dict[str, Any]]:
     selection_spec = TargetedModelSpec(spec.horizon, spec.criterion, spec.family_label, spec.n_features)
     selected = select_stage3_model(baseline_results, selection_spec)
     features = json.loads(selected["features"])
     y_train = prepare_target(train, target_column)
     y_test = prepare_target(test, target_column)
     train_mask, test_mask = y_train.notna(), y_test.notna()
+    train_X = train.loc[train_mask, features]
+    train_y = y_train.loc[train_mask].to_numpy(dtype=float)
+    if len(train_y) <= spec.horizon:
+        raise ValueError("Training split is too short for the horizon purge gap")
+    fit_size = len(train_y) - spec.horizon
     estimator = build_estimator(model_family_by_name(str(selected["model_family"])), len(features))
-    estimator.fit(train.loc[train_mask, features], y_train.loc[train_mask].to_numpy(dtype=float))
-    train_pred = estimator.predict(train.loc[train_mask, features])
+    estimator.fit(train_X.iloc[:fit_size], train_y[:fit_size])
+    train_pred = estimator.predict(train_X)
     test_pred = estimator.predict(test.loc[test_mask, features])
     predictions = pd.DataFrame(
         {
@@ -164,19 +169,24 @@ def fit_selected_point_model(
             "point_mean": np.asarray(test_pred, dtype=float),
         }
     )
-    train_residual = pd.Series(y_train.loc[train_mask].to_numpy(dtype=float) - train_pred)
+    train_residual = train_y - train_pred
+    garch_fit_residual = pd.Series(train_residual[:fit_size])
+    delayed_residual_prefix = np.asarray(train_residual[fit_size:], dtype=float)
     metadata = {
         "selected_model_id": selected["model_id"],
         "model_family": selected["model_family"],
         "criterion": spec.criterion,
         "features": features,
         "n_features": len(features),
+        "purge_gap_rows": spec.horizon,
+        "fit_rows": fit_size,
     }
-    return estimator, train_residual, predictions, metadata
+    return estimator, garch_fit_residual, delayed_residual_prefix, predictions, metadata
 
 
 def fit_residual_garch(
-    train_residual: pd.Series,
+    fit_residual: pd.Series,
+    delayed_residual_prefix: np.ndarray,
     test_residual: np.ndarray,
     model_name: str,
     scale: float,
@@ -188,13 +198,31 @@ def fit_residual_garch(
         vol, p, o, q = "GARCH", 1, 0, 1
     else:
         raise ValueError(f"Unsupported GARCH model: {model_name}")
-    train_values = train_residual.to_numpy(dtype=float) * scale
+    train_values = fit_residual.to_numpy(dtype=float) * scale
     test_values = np.asarray(test_residual, dtype=float) * scale
-    combined = pd.Series(np.concatenate([train_values, test_values]), dtype="float64")
-    model = arch_model(combined, mean="Zero", vol=vol, p=p, o=o, q=q, dist="studentst", rescale=False)
-    result = model.fit(last_obs=len(train_values) - 1, disp="off", options={"maxiter": maxiter})
-    forecast = result.forecast(horizon=1, start=len(train_values), reindex=False)
-    sigma = np.sqrt(np.maximum(forecast.variance.iloc[: len(test_values), 0].to_numpy(dtype=float), 1e-18)) / scale
+    model = arch_model(train_values, mean="Zero", vol=vol, p=p, o=o, q=q, dist="studentst", rescale=False)
+    result = model.fit(disp="off", options={"maxiter": maxiter})
+    params = result.params
+    omega = float(params.get("omega", 0.0))
+    alpha = float(params.get("alpha[1]", 0.0))
+    gamma = float(params.get("gamma[1]", 0.0))
+    beta = float(params.get("beta[1]", 0.0))
+    previous_variance = float(np.square(np.asarray(result.conditional_volatility, dtype=float)[-1]))
+    observable_residuals = np.concatenate(
+        [np.asarray(delayed_residual_prefix, dtype=float) * scale, test_values]
+    )
+    delay = len(delayed_residual_prefix)
+    variance_forecasts = np.empty(len(test_values), dtype=float)
+    for index in range(len(test_values)):
+        # At test row i only the outcome whose origin is i-h is observable.
+        shock = float(observable_residuals[index])
+        shock_square = shock * shock
+        next_variance = omega + alpha * shock_square + beta * previous_variance
+        if o:
+            next_variance += gamma * shock_square * float(shock < 0.0)
+        previous_variance = max(float(next_variance), 1e-18)
+        variance_forecasts[index] = previous_variance
+    sigma = np.sqrt(variance_forecasts) / scale
     nu = float(result.params.get("nu", np.nan))
     metadata = {
         "model_name": model_name,
@@ -205,6 +233,8 @@ def fit_residual_garch(
         "distribution": "studentst",
         "nu": nu,
         "scale": scale,
+        "causal_update_delay_rows": delay,
+        "forecast_method": "manual delayed residual recursion",
         "convergence_flag": int(getattr(result, "convergence_flag", -1)),
         "params": {str(k): float(v) for k, v in result.params.items()},
     }
@@ -239,14 +269,23 @@ def fit_catboost_multiquantile(
         "thread_count": threads,
         "verbose": False,
     }
+    if len(data.y_train) <= horizon:
+        raise ValueError("Training split is too short for the horizon purge gap")
+    fit_size = len(data.y_train) - horizon
     model = CatBoostRegressor(**params)
-    model.fit(data.X_train, data.y_train, verbose=False)
+    model.fit(data.X_train.iloc[:fit_size], data.y_train[:fit_size], verbose=False)
     values = np.asarray(model.predict(data.X_test), dtype=float)
     if values.ndim != 2 or values.shape[1] != len(QUANTILE_ALPHAS):
         raise RuntimeError(f"Unexpected CatBoost prediction shape: {values.shape}")
     frame = pd.DataFrame({f"q{int(a * 100):02d}": values[:, i] for i, a in enumerate(QUANTILE_ALPHAS)})
     frame.insert(0, "timestamp", data.test_timestamps)
-    metadata = {"params": params, "features": data.feature_columns, "n_features": len(data.feature_columns)}
+    metadata = {
+        "params": params,
+        "features": data.feature_columns,
+        "n_features": len(data.feature_columns),
+        "purge_gap_rows": horizon,
+        "fit_rows": fit_size,
+    }
     return model, frame, metadata
 
 
@@ -295,6 +334,7 @@ def simulate_non_overlapping(
     frame = predictions.loc[predictions["segment"].eq(segment)].copy().reset_index(drop=True)
     local_signal = np.asarray(signal)[predictions["segment"].eq(segment).to_numpy()]
     timestamps = pd.to_datetime(frame["timestamp"], utc=True)
+    holding_period = pd.Timedelta(minutes=int(horizon))
     next_allowed = None
     trades = []
     round_trip_fee = 2.0 * fee_per_action
@@ -313,14 +353,14 @@ def simulate_non_overlapping(
                 "segment": segment,
                 "horizon": horizon,
                 "entry_timestamp": timestamp,
-                "exit_timestamp": timestamp + pd.Timedelta(minutes=horizon),
+                "exit_timestamp": timestamp + holding_period,
                 "side": int(side),
                 "gross_return": gross_return,
                 "commission": round_trip_fee,
                 "net_return": net_return,
             }
         )
-        next_allowed = timestamp + pd.Timedelta(minutes=horizon)
+        next_allowed = timestamp + holding_period
     trades_frame = pd.DataFrame(trades)
     if trades_frame.empty:
         metrics = empty_metrics(strategy, segment, horizon)
@@ -454,13 +494,18 @@ def evaluate_horizon(args: argparse.Namespace, s3: Any, spec: ExperimentSpec, ru
     baseline_key = f"dataset_target_{spec.horizon}/{args.results_subdir}/{args.baseline_run_id}/experiment_results.parquet"
     baseline_results = read_required_parquet(s3, args.bucket, baseline_key)
     logger.info("fit point horizon=%d", spec.horizon)
-    point_model, train_residual, predictions, point_metadata = fit_selected_point_model(
+    point_model, garch_fit_residual, delayed_residual_prefix, predictions, point_metadata = fit_selected_point_model(
         train, test, baseline_results, spec, target_column
     )
     test_residual = predictions["y_true"].to_numpy() - predictions["point_mean"].to_numpy()
     logger.info("fit garch horizon=%d model=%s", spec.horizon, spec.garch_name)
     garch_model, sigma, nu, garch_metadata = fit_residual_garch(
-        train_residual, test_residual, spec.garch_name, args.garch_scale, args.garch_maxiter
+        garch_fit_residual,
+        delayed_residual_prefix,
+        test_residual,
+        spec.garch_name,
+        args.garch_scale,
+        args.garch_maxiter,
     )
     predictions["garch_sigma"] = sigma
     cost = 2.0 * args.fee_per_action

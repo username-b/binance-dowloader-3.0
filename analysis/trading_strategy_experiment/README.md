@@ -41,6 +41,11 @@ The experiment uses the existing target log return as an execution proxy. It
 charges 0.05% at entry and 0.05% at exit, allows only one non-overlapping
 position at a time, and excludes slippage and funding.
 
+For horizon `h`, the last `h` training rows are purged because their targets
+cross the train/test boundary. During evaluation, GARCH volatility is updated
+only with the residual whose `h`-minute outcome has become observable at the
+current timestamp; future overlapping target residuals are never consumed.
+
 The 20-minute CatBoost model uses `dataset_target_20/with_price_hmm_n4`,
 matching the original ML comparison; the selected linear model continues to
 use the base `dataset_target_20` feature set stored in its stage-3 metadata.

@@ -48,6 +48,33 @@ class TradingStrategyExperimentTest(unittest.TestCase):
         frame = pd.DataFrame({"q05": [-2.0], "q25": [-1.0], "q50": [0.0], "q75": [1.0], "q95": [2.0]})
         self.assertTrue(np.allclose(MODULE.quantile_cdf_at(frame, 0.0), [0.5]))
 
+    def test_garch_does_not_consume_unobservable_future_residuals(self):
+        rng = np.random.default_rng(42)
+        fit_residual = pd.Series(rng.standard_t(6, 500) * 0.002)
+        delayed_prefix = rng.standard_t(6, 20) * 0.002
+        test_residual = rng.standard_t(6, 80) * 0.002
+        _, sigma_before, _, _ = MODULE.fit_residual_garch(
+            fit_residual,
+            delayed_prefix,
+            test_residual,
+            "gjr_garch_1_1",
+            100.0,
+            100,
+        )
+        changed = test_residual.copy()
+        changed[10] = 100.0
+        _, sigma_after, _, _ = MODULE.fit_residual_garch(
+            fit_residual,
+            delayed_prefix,
+            changed,
+            "gjr_garch_1_1",
+            100.0,
+            100,
+        )
+        # Residual 10 becomes observable only at forecast row 10 + horizon.
+        self.assertTrue(np.allclose(sigma_before[:30], sigma_after[:30]))
+        self.assertFalse(np.isclose(sigma_before[30], sigma_after[30]))
+
 
 if __name__ == "__main__":
     unittest.main()
